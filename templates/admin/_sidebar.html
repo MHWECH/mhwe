@@ -1,0 +1,40 @@
+<ul class="nav flex-column py-3">
+    <li class="nav-item">
+        <a class="nav-link {% if request.endpoint == 'admin_dashboard' %}active{% endif %}"
+           href="{{ url_for('admin_dashboard') }}">
+            📊 Dashboard
+        </a>
+    </li>
+    <li class="nav-item">
+        <a class="nav-link {% if request.endpoint == 'admin_form_builder' %}active{% endif %}"
+           href="{{ url_for('admin_form_builder') }}">
+            📝 Formular bearbeiten
+        </a>
+    </li>
+    <li class="nav-item">
+        <a class="nav-link {% if request.endpoint == 'admin_submissions' %}active{% endif %}"
+           href="{{ url_for('admin_submissions') }}">
+            📥 Einsendungen
+        </a>
+    </li>
+    <li class="nav-item">
+        <a class="nav-link {% if request.endpoint == 'admin_mail_settings' %}active{% endif %}"
+           href="{{ url_for('admin_mail_settings') }}">
+            ✉ E-Mail-Einstellungen
+        </a>
+    </li>
+    <hr class="my-2">
+    <li class="nav-item">
+        <a class="nav-link text-muted" href="{{ url_for('index') }}" target="_blank">
+            🔗 Formular ansehen ↗
+        </a>
+    </li>
+    <li class="nav-item">
+        <a class="nav-link text-danger" href="{{ url_for('admin_logout') }}">
+            🚪 Abmelden
+        </a>
+    </li>
+    <li class="nav-item mt-3 px-3">
+        <small class="text-muted">Angemeldet als<br><strong>{{ session.get('admin_username', '') }}</strong></small>
+    </li>
+</ul>

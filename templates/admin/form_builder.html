@@ -1,0 +1,335 @@
+{% extends 'admin/base.html' %}
+{% block title %}Formular bearbeiten{% endblock %}
+
+{% block extra_head %}
+<script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.0/Sortable.min.js"></script>
+{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h2 class="mb-0">Formular bearbeiten</h2>
+    <div>
+        <a href="{{ url_for('index') }}" target="_blank" class="btn btn-outline-secondary btn-sm me-2">
+            Vorschau ↗
+        </a>
+        <button type="button" class="btn btn-primary btn-sm" onclick="saveForm()">
+            💾 Speichern
+        </button>
+    </div>
+</div>
+
+<form id="main-form" method="post">
+    <input type="hidden" name="fields_json" id="fields-json-input">
+
+    <div class="row g-3 mb-4">
+        <div class="col-md-6">
+            <label class="form-label fw-semibold">Formularname</label>
+            <input type="text" name="form_name" class="form-control" value="{{ config.form_name }}" required>
+        </div>
+        <div class="col-md-6">
+            <label class="form-label fw-semibold">Schaltflächen-Text</label>
+            <input type="text" name="submit_button_text" class="form-control"
+                   value="{{ config.submit_button_text or 'Absenden' }}">
+        </div>
+        <div class="col-12">
+            <label class="form-label fw-semibold">Beschreibung <small class="text-muted">(optional)</small></label>
+            <input type="text" name="form_description" class="form-control"
+                   value="{{ config.form_description }}" placeholder="Kurze Beschreibung des Formulars">
+        </div>
+        <div class="col-12">
+            <label class="form-label fw-semibold">Erfolgsmeldung</label>
+            <input type="text" name="success_message" class="form-control"
+                   value="{{ config.success_message }}" placeholder="Meldung nach dem Absenden">
+        </div>
+    </div>
+</form>
+
+<div class="card">
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <h5 class="mb-0">Formularfelder</h5>
+        <button type="button" class="btn btn-success btn-sm" onclick="openAddModal()">
+            + Feld hinzufügen
+        </button>
+    </div>
+    <div class="card-body">
+        <div id="fields-list"></div>
+    </div>
+</div>
+
+<div class="mt-3 text-end">
+    <button type="button" class="btn btn-primary" onclick="saveForm()">💾 Formular speichern</button>
+</div>
+
+<!-- Field Modal -->
+<div class="modal fade" id="fieldModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="modal-title">Feld hinzufügen</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div id="field-form">
+                    <input type="hidden" id="field-id">
+                    <div class="row g-3">
+                        <div class="col-md-6">
+                            <label class="form-label fw-semibold">Label <span class="text-danger">*</span></label>
+                            <input type="text" id="field-label" class="form-control"
+                                   placeholder="z. B. Ihr Name">
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label fw-semibold">
+                                Feldname <span class="text-danger">*</span>
+                                <small class="text-muted">(technisch, nur a-z, 0-9, _)</small>
+                            </label>
+                            <input type="text" id="field-name" class="form-control"
+                                   placeholder="z. B. ihr_name" pattern="[a-z][a-z0-9_]*">
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label fw-semibold">Feldtyp</label>
+                            <select id="field-type" class="form-select" onchange="updateOptionsSection()">
+                                <option value="text">Text (einzeilig)</option>
+                                <option value="textarea">Textbereich (mehrzeilig)</option>
+                                <option value="number">Zahl</option>
+                                <option value="email">E-Mail-Adresse</option>
+                                <option value="tel">Telefonnummer</option>
+                                <option value="date">Datum</option>
+                                <option value="time">Uhrzeit</option>
+                                <option value="url">URL / Webseite</option>
+                                <option value="select">Dropdown (Auswahl)</option>
+                                <option value="radio">Radio-Buttons</option>
+                                <option value="checkbox">Checkbox (Ja/Nein)</option>
+                                <option value="checkbox_group">Checkbox-Gruppe</option>
+                            </select>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label fw-semibold">Platzhaltertext</label>
+                            <input type="text" id="field-placeholder" class="form-control"
+                                   placeholder="Optionaler Hinweistext im Feld">
+                        </div>
+                        <div class="col-12">
+                            <label class="form-label fw-semibold">Hilfetext <small class="text-muted">(unter dem Feld)</small></label>
+                            <input type="text" id="field-help-text" class="form-control"
+                                   placeholder="Optionaler Erklärungstext">
+                        </div>
+                        <div class="col-12">
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" id="field-required">
+                                <label class="form-check-label fw-semibold" for="field-required">
+                                    Pflichtfeld
+                                </label>
+                            </div>
+                        </div>
+
+                        <!-- Options section for select/radio/checkbox_group -->
+                        <div class="col-12" id="options-section" style="display:none">
+                            <label class="form-label fw-semibold">Optionen</label>
+                            <div id="options-list"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Abbrechen</button>
+                <button type="button" class="btn btn-primary" onclick="saveField()">Feld speichern</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Embedded field data -->
+<script id="fields-data" type="application/json">{{ config.fields_json | safe }}</script>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+let fields = JSON.parse(document.getElementById('fields-data').textContent || '[]');
+let editingIndex = -1;
+let optionsList = [];
+let sortableInstance = null;
+
+const TYPE_LABELS = {
+    text: 'Text', textarea: 'Textbereich', number: 'Zahl',
+    email: 'E-Mail', tel: 'Telefon', date: 'Datum',
+    time: 'Uhrzeit', url: 'URL', select: 'Dropdown',
+    radio: 'Radio', checkbox: 'Checkbox', checkbox_group: 'Checkbox-Gruppe'
+};
+
+function esc(s) {
+    return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+function generateId() {
+    return 'f_' + Date.now() + '_' + Math.random().toString(36).slice(2,7);
+}
+
+function renderFields() {
+    const container = document.getElementById('fields-list');
+    if (sortableInstance) { sortableInstance.destroy(); sortableInstance = null; }
+
+    if (!fields.length) {
+        container.innerHTML = '<div class="text-center text-muted py-5 border rounded">' +
+            '<p class="mb-2 fs-5">Noch keine Felder vorhanden.</p>' +
+            '<button class="btn btn-success" onclick="openAddModal()">+ Erstes Feld hinzufügen</button></div>';
+        return;
+    }
+
+    container.innerHTML = fields.map((f, i) => `
+        <div class="field-card card mb-2" data-index="${i}">
+            <div class="card-body py-2 px-3 d-flex align-items-center gap-3">
+                <span class="drag-handle text-muted fs-5" title="Zum Verschieben ziehen" style="cursor:grab;user-select:none">⠿</span>
+                <div class="flex-grow-1">
+                    <strong>${esc(f.label)}</strong>
+                    <span class="badge bg-secondary ms-1">${esc(TYPE_LABELS[f.type] || f.type)}</span>
+                    ${f.required ? '<span class="badge bg-danger ms-1">Pflicht</span>' : ''}
+                    <br><small class="text-muted">name: <code>${esc(f.name)}</code>
+                    ${f.placeholder ? ' · Platzhalter: ' + esc(f.placeholder) : ''}</small>
+                </div>
+                <div class="btn-group btn-group-sm">
+                    <button class="btn btn-outline-primary" onclick="editField(${i})">Bearbeiten</button>
+                    <button class="btn btn-outline-danger" onclick="deleteField(${i})">✕</button>
+                </div>
+            </div>
+        </div>
+    `).join('');
+
+    sortableInstance = Sortable.create(container, {
+        animation: 150,
+        handle: '.drag-handle',
+        onEnd(evt) {
+            const moved = fields.splice(evt.oldIndex, 1)[0];
+            fields.splice(evt.newIndex, 0, moved);
+        }
+    });
+}
+
+function openAddModal() {
+    editingIndex = -1;
+    document.getElementById('field-id').value = generateId();
+    document.getElementById('field-label').value = '';
+    document.getElementById('field-name').value = '';
+    document.getElementById('field-type').value = 'text';
+    document.getElementById('field-placeholder').value = '';
+    document.getElementById('field-help-text').value = '';
+    document.getElementById('field-required').checked = false;
+    document.getElementById('modal-title').textContent = 'Feld hinzufügen';
+    optionsList = [];
+    updateOptionsSection();
+    new bootstrap.Modal(document.getElementById('fieldModal')).show();
+}
+
+function editField(index) {
+    editingIndex = index;
+    const f = fields[index];
+    document.getElementById('field-id').value = f.id;
+    document.getElementById('field-label').value = f.label;
+    document.getElementById('field-name').value = f.name;
+    document.getElementById('field-type').value = f.type;
+    document.getElementById('field-placeholder').value = f.placeholder || '';
+    document.getElementById('field-help-text').value = f.help_text || '';
+    document.getElementById('field-required').checked = !!f.required;
+    document.getElementById('modal-title').textContent = 'Feld bearbeiten';
+    optionsList = (f.options || []).map(o => ({...o}));
+    updateOptionsSection();
+    new bootstrap.Modal(document.getElementById('fieldModal')).show();
+}
+
+function deleteField(index) {
+    if (confirm(`Feld "${fields[index].label}" wirklich löschen?`)) {
+        fields.splice(index, 1);
+        renderFields();
+    }
+}
+
+function saveField() {
+    const id       = document.getElementById('field-id').value;
+    const label    = document.getElementById('field-label').value.trim();
+    const name     = document.getElementById('field-name').value.trim();
+    const type     = document.getElementById('field-type').value;
+    const placeholder = document.getElementById('field-placeholder').value.trim();
+    const help_text   = document.getElementById('field-help-text').value.trim();
+    const required    = document.getElementById('field-required').checked;
+
+    if (!label) { alert('Bitte ein Label eingeben.'); return; }
+    if (!name)  { alert('Bitte einen Feldnamen eingeben.'); return; }
+    if (!/^[a-z][a-z0-9_]*$/.test(name)) {
+        alert('Feldname: nur Kleinbuchstaben (a-z), Ziffern (0-9) und Unterstriche (_). Muss mit Buchstabe beginnen.');
+        return;
+    }
+    const dup = fields.findIndex((f, i) => f.name === name && i !== editingIndex);
+    if (dup !== -1) { alert('Dieser Feldname wird bereits verwendet.'); return; }
+
+    const options = collectOptions();
+    const field = { id, label, name, type, placeholder, help_text, required, options };
+
+    if (editingIndex === -1) fields.push(field);
+    else fields[editingIndex] = field;
+
+    bootstrap.Modal.getInstance(document.getElementById('fieldModal')).hide();
+    renderFields();
+}
+
+// Auto-generate field name from label
+document.getElementById('field-label').addEventListener('input', function() {
+    if (editingIndex !== -1) return;
+    const uml = { ä:'ae', ö:'oe', ü:'ue', ß:'ss', Ä:'ae', Ö:'oe', Ü:'ue' };
+    const name = this.value.toLowerCase()
+        .replace(/[äöüßÄÖÜ]/g, c => uml[c] || c)
+        .replace(/\s+/g, '_')
+        .replace(/[^a-z0-9_]/g, '')
+        .replace(/^[0-9_]+/, '');
+    document.getElementById('field-name').value = name;
+});
+
+// Options (for select / radio / checkbox_group)
+function updateOptionsSection(opts) {
+    if (opts !== undefined) optionsList = opts;
+    const type = document.getElementById('field-type').value;
+    const show = ['select', 'radio', 'checkbox_group'].includes(type);
+    document.getElementById('options-section').style.display = show ? 'block' : 'none';
+    renderOptions();
+}
+
+function renderOptions() {
+    const container = document.getElementById('options-list');
+    const rows = optionsList.map((opt, i) => `
+        <div class="input-group input-group-sm mb-1">
+            <span class="input-group-text text-muted">${i+1}</span>
+            <input type="text" class="form-control" value="${esc(opt.value)}"
+                   placeholder="Wert" oninput="optionsList[${i}].value=this.value">
+            <input type="text" class="form-control" value="${esc(opt.label)}"
+                   placeholder="Anzeigetext" oninput="optionsList[${i}].label=this.value">
+            <button type="button" class="btn btn-outline-danger" onclick="removeOption(${i})">✕</button>
+        </div>
+    `).join('');
+    container.innerHTML = rows + `
+        <button type="button" class="btn btn-sm btn-outline-secondary mt-1" onclick="addOption()">
+            + Option hinzufügen
+        </button>`;
+}
+
+function addOption() {
+    optionsList.push({ value: '', label: '' });
+    renderOptions();
+}
+
+function removeOption(i) {
+    optionsList.splice(i, 1);
+    renderOptions();
+}
+
+function collectOptions() {
+    return optionsList
+        .filter(o => o.value || o.label)
+        .map(o => ({ value: o.value || o.label, label: o.label || o.value }));
+}
+
+function saveForm() {
+    document.getElementById('fields-json-input').value = JSON.stringify(fields);
+    document.getElementById('main-form').submit();
+}
+
+// Init
+renderFields();
+</script>
+{% endblock %}

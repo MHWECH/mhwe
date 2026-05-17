@@ -1,0 +1,110 @@
+{% extends 'base.html' %}
+{% block title %}{{ config.form_name }}{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-lg-7 col-md-9">
+        <div class="card shadow-sm">
+            <div class="card-body p-4 p-md-5">
+                <h1 class="card-title h3 mb-2">{{ config.form_name }}</h1>
+                {% if config.form_description %}
+                <p class="text-muted mb-4">{{ config.form_description }}</p>
+                {% endif %}
+
+                <form method="post" action="{{ url_for('submit') }}" novalidate>
+                    {# Honeypot field – hidden from humans #}
+                    <div style="display:none" aria-hidden="true">
+                        <input type="text" name="_hp_email" tabindex="-1" autocomplete="off">
+                    </div>
+
+                    {% for field in config.fields %}
+                    <div class="mb-3">
+                        <label for="field_{{ field.name }}" class="form-label fw-semibold">
+                            {{ field.label }}
+                            {% if field.required %}<span class="text-danger" title="Pflichtfeld">*</span>{% endif %}
+                        </label>
+
+                        {% set ft = field.type %}
+
+                        {% if ft == 'textarea' %}
+                        <textarea class="form-control" id="field_{{ field.name }}" name="{{ field.name }}"
+                            rows="4" placeholder="{{ field.placeholder or '' }}"
+                            {% if field.required %}required{% endif %}></textarea>
+
+                        {% elif ft == 'select' %}
+                        <select class="form-select" id="field_{{ field.name }}" name="{{ field.name }}"
+                            {% if field.required %}required{% endif %}>
+                            <option value="">-- Bitte wählen --</option>
+                            {% for opt in field.options %}
+                            <option value="{{ opt.value }}">{{ opt.label }}</option>
+                            {% endfor %}
+                        </select>
+
+                        {% elif ft == 'radio' %}
+                        <div class="mt-1">
+                            {% for opt in field.options %}
+                            <div class="form-check">
+                                <input class="form-check-input" type="radio" name="{{ field.name }}"
+                                    id="field_{{ field.name }}_{{ loop.index }}" value="{{ opt.value }}"
+                                    {% if field.required %}required{% endif %}>
+                                <label class="form-check-label" for="field_{{ field.name }}_{{ loop.index }}">
+                                    {{ opt.label }}
+                                </label>
+                            </div>
+                            {% endfor %}
+                        </div>
+
+                        {% elif ft == 'checkbox_group' %}
+                        <div class="mt-1">
+                            {% for opt in field.options %}
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" name="{{ field.name }}"
+                                    id="field_{{ field.name }}_{{ loop.index }}" value="{{ opt.value }}">
+                                <label class="form-check-label" for="field_{{ field.name }}_{{ loop.index }}">
+                                    {{ opt.label }}
+                                </label>
+                            </div>
+                            {% endfor %}
+                        </div>
+
+                        {% elif ft == 'checkbox' %}
+                        <div class="form-check mt-1">
+                            <input class="form-check-input" type="checkbox" name="{{ field.name }}"
+                                id="field_{{ field.name }}" {% if field.required %}required{% endif %}>
+                            <label class="form-check-label" for="field_{{ field.name }}">
+                                {{ field.placeholder or 'Ja' }}
+                            </label>
+                        </div>
+
+                        {% else %}
+                        <input type="{{ ft }}" class="form-control" id="field_{{ field.name }}"
+                            name="{{ field.name }}" placeholder="{{ field.placeholder or '' }}"
+                            {% if field.required %}required{% endif %}>
+                        {% endif %}
+
+                        {% if field.help_text %}
+                        <div class="form-text text-muted">{{ field.help_text }}</div>
+                        {% endif %}
+                    </div>
+                    {% endfor %}
+
+                    {% if not config.fields %}
+                    <div class="alert alert-info">
+                        Dieses Formular hat noch keine Felder.
+                        <a href="{{ url_for('admin_form_builder') }}">Im Admin-Bereich bearbeiten</a>.
+                    </div>
+                    {% endif %}
+
+                    {% if config.fields %}
+                    <div class="d-grid mt-4">
+                        <button type="submit" class="btn btn-primary btn-lg">
+                            {{ config.submit_button_text or 'Absenden' }}
+                        </button>
+                    </div>
+                    {% endif %}
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

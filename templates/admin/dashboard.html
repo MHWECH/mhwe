@@ -1,0 +1,136 @@
+{% extends 'admin/base.html' %}
+{% block title %}Dashboard{% endblock %}
+
+{% block content %}
+<h2 class="mb-4">Dashboard</h2>
+
+<div class="row g-3 mb-4">
+    <div class="col-sm-6 col-lg-3">
+        <div class="card text-white bg-primary">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <h6 class="card-title mb-0 opacity-75">Einsendungen gesamt</h6>
+                        <div class="display-6 fw-bold">{{ total }}</div>
+                    </div>
+                    <div class="fs-1 opacity-50">📥</div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-sm-6 col-lg-3">
+        <div class="card text-white bg-success">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <h6 class="card-title mb-0 opacity-75">Formularfelder</h6>
+                        <div class="display-6 fw-bold">{{ config.fields | length if config else 0 }}</div>
+                    </div>
+                    <div class="fs-1 opacity-50">📝</div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-sm-6 col-lg-6">
+        <div class="card h-100">
+            <div class="card-body d-flex flex-column justify-content-center">
+                <h6 class="card-title text-muted">Formular</h6>
+                <p class="mb-1 fw-semibold">{{ config.form_name if config else '—' }}</p>
+                <div class="mt-2">
+                    <a href="{{ url_for('index') }}" target="_blank" class="btn btn-sm btn-outline-primary me-2">
+                        Formular ansehen ↗
+                    </a>
+                    <a href="{{ url_for('admin_form_builder') }}" class="btn btn-sm btn-outline-secondary">
+                        Bearbeiten
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row g-3">
+    <!-- Recent submissions -->
+    <div class="col-lg-7">
+        <div class="card">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h5 class="mb-0">Letzte Einsendungen</h5>
+                <a href="{{ url_for('admin_submissions') }}" class="btn btn-sm btn-outline-primary">Alle anzeigen</a>
+            </div>
+            <div class="card-body p-0">
+                {% if recent %}
+                <div class="table-responsive">
+                    <table class="table table-sm table-hover mb-0">
+                        <thead class="table-light">
+                            <tr>
+                                <th>#</th>
+                                <th>Datum</th>
+                                <th>Erste Felder</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for sub in recent %}
+                            <tr>
+                                <td class="text-muted">{{ sub.id }}</td>
+                                <td class="text-nowrap">{{ sub.submitted_at.strftime('%d.%m.%Y %H:%M') }}</td>
+                                <td>
+                                    {% set d = sub.data %}
+                                    {% for k, v in d.items() %}{% if loop.index <= 2 %}
+                                    <span class="badge bg-light text-dark border me-1">
+                                        {{ v[:30] ~ ('…' if v|length > 30 else '') if v is string else v }}
+                                    </span>
+                                    {% endif %}{% endfor %}
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                {% else %}
+                <p class="text-muted text-center py-4 mb-0">Noch keine Einsendungen.</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <!-- Quick actions -->
+    <div class="col-lg-5">
+        <div class="card mb-3">
+            <div class="card-header"><h5 class="mb-0">Schnellaktionen</h5></div>
+            <div class="card-body d-grid gap-2">
+                <a href="{{ url_for('admin_export', format='csv') }}" class="btn btn-outline-success">
+                    ⬇ Export als CSV
+                </a>
+                <a href="{{ url_for('admin_export', format='json') }}" class="btn btn-outline-secondary">
+                    ⬇ Export als JSON
+                </a>
+                <a href="{{ url_for('admin_mail_settings') }}" class="btn btn-outline-info">
+                    ✉ E-Mail konfigurieren
+                </a>
+            </div>
+        </div>
+
+        <!-- Change password -->
+        <div class="card">
+            <div class="card-header"><h5 class="mb-0">Passwort ändern</h5></div>
+            <div class="card-body">
+                <form method="post" action="{{ url_for('admin_change_password') }}">
+                    <div class="mb-2">
+                        <input type="password" name="current_password" class="form-control form-control-sm"
+                               placeholder="Aktuelles Passwort" required autocomplete="current-password">
+                    </div>
+                    <div class="mb-2">
+                        <input type="password" name="new_password" class="form-control form-control-sm"
+                               placeholder="Neues Passwort (min. 6 Zeichen)" required autocomplete="new-password">
+                    </div>
+                    <div class="mb-3">
+                        <input type="password" name="confirm_password" class="form-control form-control-sm"
+                               placeholder="Passwort wiederholen" required autocomplete="new-password">
+                    </div>
+                    <button type="submit" class="btn btn-sm btn-warning w-100">Passwort ändern</button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

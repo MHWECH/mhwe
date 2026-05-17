@@ -1,0 +1,192 @@
+{% extends 'admin/base.html' %}
+{% block title %}E-Mail-Einstellungen{% endblock %}
+
+{% block content %}
+<h2 class="mb-4">E-Mail-Einstellungen</h2>
+
+<form method="post">
+<div class="row g-4">
+
+    <!-- SMTP Server -->
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h5 class="mb-0">SMTP-Server</h5>
+                <div class="form-check form-switch mb-0">
+                    <input class="form-check-input" type="checkbox" id="enabled" name="enabled"
+                           {% if cfg.enabled %}checked{% endif %} role="switch">
+                    <label class="form-check-label fw-semibold" for="enabled">E-Mail-Versand aktiv</label>
+                </div>
+            </div>
+            <div class="card-body">
+                <div class="row g-3">
+                    <div class="col-md-8">
+                        <label class="form-label">SMTP-Host</label>
+                        <input type="text" name="smtp_host" class="form-control"
+                               value="{{ cfg.smtp_host }}" placeholder="z. B. smtp.gmail.com oder mail.ihranbieter.de">
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label">Port</label>
+                        <input type="number" name="smtp_port" class="form-control"
+                               value="{{ cfg.smtp_port or 587 }}" placeholder="587">
+                        <div class="form-text">587 (STARTTLS) · 465 (SSL) · 25 (plain)</div>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label">Benutzername / E-Mail</label>
+                        <input type="text" name="smtp_user" class="form-control"
+                               value="{{ cfg.smtp_user }}" autocomplete="off">
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label">Passwort</label>
+                        <input type="password" name="smtp_password" class="form-control"
+                               placeholder="{% if cfg.smtp_password %}(unverändert lassen){% else %}Passwort eingeben{% endif %}"
+                               autocomplete="new-password">
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label">Absender-E-Mail</label>
+                        <input type="email" name="from_email" class="form-control"
+                               value="{{ cfg.from_email }}" placeholder="noreply@ihredomain.de">
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label">Absendername</label>
+                        <input type="text" name="from_name" class="form-control"
+                               value="{{ cfg.from_name }}" placeholder="z. B. Meine Webseite">
+                    </div>
+                    <div class="col-12">
+                        <div class="row g-3">
+                            <div class="col-auto">
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" id="use_tls" name="use_tls"
+                                           {% if cfg.use_tls %}checked{% endif %}>
+                                    <label class="form-check-label" for="use_tls">STARTTLS verwenden</label>
+                                </div>
+                            </div>
+                            <div class="col-auto">
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" id="use_ssl" name="use_ssl"
+                                           {% if cfg.use_ssl %}checked{% endif %}>
+                                    <label class="form-check-label" for="use_ssl">SSL/TLS (Port 465)</label>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Notifications -->
+    <div class="col-lg-6">
+        <div class="card h-100">
+            <div class="card-header">
+                <h5 class="mb-0">Benachrichtigung bei neuer Einsendung</h5>
+            </div>
+            <div class="card-body">
+                <div class="mb-3">
+                    <label class="form-label">Empfänger-E-Mails</label>
+                    <input type="text" name="notification_email" class="form-control"
+                           value="{{ cfg.notification_email }}"
+                           placeholder="admin@domain.de, chef@domain.de">
+                    <div class="form-text">Mehrere Adressen kommagetrennt.</div>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Betreff</label>
+                    <input type="text" name="notification_subject" class="form-control"
+                           value="{{ cfg.notification_subject }}"
+                           placeholder="Neue Formulareinsendung">
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">
+                        E-Mail-Text
+                        <small class="text-muted">(leer = automatisch alle Felder)</small>
+                    </label>
+                    <textarea name="notification_body" class="form-control" rows="5"
+                              placeholder="Optionaler eigener Text. Feldwerte mit {feldname} einfügen, z. B. {name}, {email}.">{{ cfg.notification_body }}</textarea>
+                    {% if form_config %}
+                    <div class="form-text">
+                        Verfügbare Platzhalter:
+                        {% for f in form_config.fields %}
+                        <code class="me-1">{{'{'}}{{ f.name }}{{'}'}}}</code>
+                        {% endfor %}
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Confirmation -->
+    <div class="col-lg-6">
+        <div class="card h-100">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h5 class="mb-0">Bestätigungs-E-Mail an Absender</h5>
+                <div class="form-check form-switch mb-0">
+                    <input class="form-check-input" type="checkbox" id="send_confirmation"
+                           name="send_confirmation" role="switch"
+                           {% if cfg.send_confirmation %}checked{% endif %}>
+                    <label class="form-check-label" for="send_confirmation">Aktiv</label>
+                </div>
+            </div>
+            <div class="card-body">
+                <div class="mb-3">
+                    <label class="form-label">E-Mail-Adresse aus welchem Feld?</label>
+                    <select name="confirmation_email_field" class="form-select">
+                        <option value="">-- Feld auswählen --</option>
+                        {% if form_config %}
+                        {% for f in form_config.fields %}
+                        {% if f.type in ('email', 'text') %}
+                        <option value="{{ f.name }}"
+                            {% if cfg.confirmation_email_field == f.name %}selected{% endif %}>
+                            {{ f.label }} ({{ f.name }})
+                        </option>
+                        {% endif %}
+                        {% endfor %}
+                        {% endif %}
+                    </select>
+                    <div class="form-text">Das E-Mail-Feld, das die Absender-Adresse enthält.</div>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Betreff</label>
+                    <input type="text" name="confirmation_subject" class="form-control"
+                           value="{{ cfg.confirmation_subject }}"
+                           placeholder="Bestätigung Ihrer Einsendung">
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">
+                        E-Mail-Text
+                        <small class="text-muted">(leer = automatisch alle Felder)</small>
+                    </label>
+                    <textarea name="confirmation_body" class="form-control" rows="5"
+                              placeholder="Hallo {name},&#10;vielen Dank für Ihre Nachricht!">{{ cfg.confirmation_body }}</textarea>
+                    {% if form_config %}
+                    <div class="form-text">
+                        Platzhalter:
+                        {% for f in form_config.fields %}
+                        <code class="me-1">{{'{'}}{{ f.name }}{{'}'}}}</code>
+                        {% endfor %}
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-12">
+        <button type="submit" class="btn btn-primary">💾 Einstellungen speichern</button>
+    </div>
+</div>
+</form>
+
+<!-- Test mail -->
+<div class="card mt-4">
+    <div class="card-header"><h5 class="mb-0">Test-E-Mail senden</h5></div>
+    <div class="card-body">
+        <form method="post" action="{{ url_for('admin_mail_test') }}" class="d-flex gap-2">
+            <input type="email" name="test_email" class="form-control"
+                   placeholder="Ihre E-Mail-Adresse" required style="max-width:300px">
+            <button type="submit" class="btn btn-outline-primary">Test senden</button>
+        </form>
+        <div class="form-text mt-1">Sendet eine Test-E-Mail mit den aktuell gespeicherten Einstellungen.</div>
+    </div>
+</div>
+{% endblock %}

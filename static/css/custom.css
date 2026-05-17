@@ -1,0 +1,103 @@
+/* ── Public form ─────────────────────────────────────────────────────────── */
+
+.public-body {
+    background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+    min-height: 100vh;
+}
+
+.public-body .card {
+    border: none;
+    border-radius: 1rem;
+}
+
+.success-icon {
+    width: 72px;
+    height: 72px;
+    border-radius: 50%;
+    background: #198754;
+    color: #fff;
+    font-size: 2rem;
+    line-height: 72px;
+    margin: 0 auto;
+}
+
+/* ── Login ───────────────────────────────────────────────────────────────── */
+
+.login-body {
+    background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+}
+
+.login-icon {
+    font-size: 3rem;
+    line-height: 1;
+}
+
+/* ── Admin layout ────────────────────────────────────────────────────────── */
+
+.admin-body {
+    background: #f8f9fa;
+}
+
+.sidebar {
+    background: #fff;
+    border-right: 1px solid #dee2e6;
+    min-height: calc(100vh - 56px);
+    padding-top: .5rem;
+}
+
+.sidebar .nav-link {
+    color: #495057;
+    border-radius: .375rem;
+    padding: .5rem 1rem;
+    font-size: .9rem;
+    transition: background .15s;
+}
+
+.sidebar .nav-link:hover {
+    background: #f0f4ff;
+    color: #0d6efd;
+}
+
+.sidebar .nav-link.active {
+    background: #e8f0fe;
+    color: #0d6efd;
+    font-weight: 600;
+}
+
+.sidebar .nav-link.text-danger:hover {
+    background: #fff0f0;
+}
+
+/* ── Form builder ────────────────────────────────────────────────────────── */
+
+.field-card {
+    border-left: 3px solid #0d6efd;
+    transition: box-shadow .15s;
+}
+
+.field-card:hover {
+    box-shadow: 0 2px 8px rgba(0,0,0,.1);
+}
+
+.field-card .drag-handle {
+    font-size: 1.2rem;
+    opacity: .5;
+    transition: opacity .15s;
+}
+
+.field-card:hover .drag-handle {
+    opacity: 1;
+}
+
+/* ── Misc ────────────────────────────────────────────────────────────────── */
+
+.table > :not(caption) > * > * {
+    vertical-align: middle;
+}
+
+code {
+    background: #f1f3f5;
+    padding: .1em .3em;
+    border-radius: .25em;
+    font-size: .85em;
+}
