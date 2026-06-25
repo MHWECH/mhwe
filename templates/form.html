@@ -1,110 +1,188 @@
 {% extends 'base.html' %}
-{% block title %}{{ config.form_name }}{% endblock %}
+{% block title %}Bestellung Eigenbedarf (EBD){% endblock %}
 
 {% block content %}
 <div class="row justify-content-center">
-    <div class="col-lg-7 col-md-9">
+    <div class="col-lg-9 col-md-11">
         <div class="card shadow-sm">
             <div class="card-body p-4 p-md-5">
-                <h1 class="card-title h3 mb-2">{{ config.form_name }}</h1>
-                {% if config.form_description %}
-                <p class="text-muted mb-4">{{ config.form_description }}</p>
-                {% endif %}
+                <h1 class="card-title h3 mb-1">Bestellung Eigenbedarf (EBD)</h1>
+                <p class="text-muted mb-4">Bauhaus Fachcentren AG · Datum: {{ today }}</p>
 
-                <form method="post" action="{{ url_for('submit') }}" novalidate>
-                    {# Honeypot field – hidden from humans #}
-                    <div style="display:none" aria-hidden="true">
-                        <input type="text" name="_hp_email" tabindex="-1" autocomplete="off">
+                {% with messages = get_flashed_messages(with_categories=true) %}
+                {% for category, message in messages %}
+                <div class="alert alert-{{ 'danger' if category == 'error' else 'success' }} alert-dismissible fade show">
+                    {{ message }}
+                    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                </div>
+                {% endfor %}
+                {% endwith %}
+
+                <form method="post" action="{{ url_for('submit') }}" id="ebdForm" novalidate>
+
+                    <h5 class="mt-2 mb-3">Empfängerfirma</h5>
+                    <div class="row g-3 mb-4">
+                        <div class="col-md-6">
+                            <label class="form-label fw-semibold">Firma <span class="text-danger">*</span></label>
+                            <input type="text" class="form-control" name="firma" required>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label fw-semibold">Adresse (eine Zeile pro Feld)</label>
+                            <textarea class="form-control" name="adresse" rows="3"
+                                placeholder="Strasse&#10;PLZ Ort"></textarea>
+                        </div>
                     </div>
 
-                    {% for field in config.fields %}
-                    <div class="mb-3">
-                        <label for="field_{{ field.name }}" class="form-label fw-semibold">
-                            {{ field.label }}
-                            {% if field.required %}<span class="text-danger" title="Pflichtfeld">*</span>{% endif %}
-                        </label>
-
-                        {% set ft = field.type %}
-
-                        {% if ft == 'textarea' %}
-                        <textarea class="form-control" id="field_{{ field.name }}" name="{{ field.name }}"
-                            rows="4" placeholder="{{ field.placeholder or '' }}"
-                            {% if field.required %}required{% endif %}></textarea>
-
-                        {% elif ft == 'select' %}
-                        <select class="form-select" id="field_{{ field.name }}" name="{{ field.name }}"
-                            {% if field.required %}required{% endif %}>
-                            <option value="">-- Bitte wählen --</option>
-                            {% for opt in field.options %}
-                            <option value="{{ opt.value }}">{{ opt.label }}</option>
-                            {% endfor %}
-                        </select>
-
-                        {% elif ft == 'radio' %}
-                        <div class="mt-1">
-                            {% for opt in field.options %}
-                            <div class="form-check">
-                                <input class="form-check-input" type="radio" name="{{ field.name }}"
-                                    id="field_{{ field.name }}_{{ loop.index }}" value="{{ opt.value }}"
-                                    {% if field.required %}required{% endif %}>
-                                <label class="form-check-label" for="field_{{ field.name }}_{{ loop.index }}">
-                                    {{ opt.label }}
-                                </label>
-                            </div>
-                            {% endfor %}
+                    <h5 class="mb-3">Bestellangaben</h5>
+                    <div class="row g-3 mb-4">
+                        <div class="col-md-4">
+                            <label class="form-label fw-semibold">EBD-Bestell-Nr.</label>
+                            <input type="text" class="form-control" name="bestell_nr" value="{{ next_nr }}">
                         </div>
-
-                        {% elif ft == 'checkbox_group' %}
-                        <div class="mt-1">
-                            {% for opt in field.options %}
-                            <div class="form-check">
-                                <input class="form-check-input" type="checkbox" name="{{ field.name }}"
-                                    id="field_{{ field.name }}_{{ loop.index }}" value="{{ opt.value }}">
-                                <label class="form-check-label" for="field_{{ field.name }}_{{ loop.index }}">
-                                    {{ opt.label }}
-                                </label>
-                            </div>
-                            {% endfor %}
+                        <div class="col-md-8">
+                            <label class="form-label fw-semibold">Verwendungszweck <span class="text-danger">*</span></label>
+                            <input type="text" class="form-control" name="verwendungszweck" required
+                                placeholder="z.B. Sägeblätter schärfen für Maschine in Abteilung">
                         </div>
-
-                        {% elif ft == 'checkbox' %}
-                        <div class="form-check mt-1">
-                            <input class="form-check-input" type="checkbox" name="{{ field.name }}"
-                                id="field_{{ field.name }}" {% if field.required %}required{% endif %}>
-                            <label class="form-check-label" for="field_{{ field.name }}">
-                                {{ field.placeholder or 'Ja' }}
-                            </label>
+                        <div class="col-md-4">
+                            <label class="form-label fw-semibold">Intern / Extern</label>
+                            <select class="form-select" name="art" id="artSelect">
+                                <option value="Intern">Intern</option>
+                                <option value="Extern">Extern</option>
+                            </select>
                         </div>
-
-                        {% else %}
-                        <input type="{{ ft }}" class="form-control" id="field_{{ field.name }}"
-                            name="{{ field.name }}" placeholder="{{ field.placeholder or '' }}"
-                            {% if field.required %}required{% endif %}>
-                        {% endif %}
-
-                        {% if field.help_text %}
-                        <div class="form-text text-muted">{{ field.help_text }}</div>
-                        {% endif %}
+                        <div class="col-md-8">
+                            <label class="form-label fw-semibold">Grund</label>
+                            <select class="form-select" name="grund" id="grundSelect"></select>
+                        </div>
                     </div>
-                    {% endfor %}
 
-                    {% if not config.fields %}
-                    <div class="alert alert-info">
-                        Dieses Formular hat noch keine Felder.
-                        <a href="{{ url_for('admin_form_builder') }}">Im Admin-Bereich bearbeiten</a>.
+                    <h5 class="mb-3">Artikel</h5>
+                    <div class="table-responsive mb-2">
+                        <table class="table table-sm align-middle" id="itemsTable">
+                            <thead class="table-light">
+                                <tr>
+                                    <th style="width:15%">Artikelnummer</th>
+                                    <th style="width:35%">Artikelname</th>
+                                    <th style="width:12%">Menge</th>
+                                    <th style="width:15%">Einzelpreis (CHF)</th>
+                                    <th style="width:15%">Gesamtpreis (CHF)</th>
+                                    <th style="width:5%"></th>
+                                </tr>
+                            </thead>
+                            <tbody></tbody>
+                        </table>
                     </div>
-                    {% endif %}
+                    <button type="button" class="btn btn-sm btn-outline-primary mb-4" id="addRowBtn">
+                        + Artikel hinzufügen
+                    </button>
 
-                    {% if config.fields %}
+                    <div class="row g-3 mb-4 justify-content-end">
+                        <div class="col-md-3">
+                            <label class="form-label fw-semibold">MwSt.-Satz (%)</label>
+                            <input type="number" step="0.1" class="form-control" id="mwstSatz" name="mwst_satz" value="{{ mwst_satz }}">
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label">Netto</label>
+                            <input type="text" class="form-control" id="totalNetto" readonly>
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label">MwSt.</label>
+                            <input type="text" class="form-control" id="totalMwst" readonly>
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label fw-semibold">Total</label>
+                            <input type="text" class="form-control" id="totalBrutto" readonly>
+                        </div>
+                    </div>
+
+                    <h5 class="mb-3">Visum</h5>
+                    <div class="row g-3 mb-4">
+                        <div class="col-md-4">
+                            <label class="form-label fw-semibold">Besteller</label>
+                            <input type="text" class="form-control" name="besteller">
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label fw-semibold">Abteilung</label>
+                            <select class="form-select" name="abteilung">
+                                <option value="">-- Bitte wählen --</option>
+                                {% for a in liste_abteilung %}
+                                <option value="{{ a }}">{{ a }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label fw-semibold">GL</label>
+                            <input type="text" class="form-control" name="gl">
+                        </div>
+                    </div>
+
                     <div class="d-grid mt-4">
                         <button type="submit" class="btn btn-primary btn-lg">
-                            {{ config.submit_button_text or 'Absenden' }}
+                            Bestellung absenden &amp; Excel exportieren
                         </button>
                     </div>
-                    {% endif %}
                 </form>
             </div>
         </div>
     </div>
 </div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+const LISTE_INTERN = {{ liste_intern | tojson }};
+const LISTE_EXTERN = {{ liste_extern | tojson }};
+
+const grundSelect = document.getElementById('grundSelect');
+const artSelect = document.getElementById('artSelect');
+
+function fillGrund() {
+    const list = artSelect.value === 'Extern' ? LISTE_EXTERN : LISTE_INTERN;
+    grundSelect.innerHTML = '<option value="">-- Bitte wählen --</option>' +
+        list.map(g => `<option value="${g}">${g}</option>`).join('');
+}
+artSelect.addEventListener('change', fillGrund);
+fillGrund();
+
+const tbody = document.querySelector('#itemsTable tbody');
+
+function rowTemplate() {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+        <td><input type="text" class="form-control form-control-sm" name="artikelnummer[]"></td>
+        <td><input type="text" class="form-control form-control-sm" name="artikelname[]"></td>
+        <td><input type="number" step="0.01" class="form-control form-control-sm qty" name="menge[]" value="1"></td>
+        <td><input type="number" step="0.01" class="form-control form-control-sm price" name="einzelpreis[]" value="0"></td>
+        <td><input type="text" class="form-control form-control-sm row-total" readonly value="0.00"></td>
+        <td><button type="button" class="btn btn-sm btn-outline-danger removeRowBtn">✕</button></td>
+    `;
+    tbody.appendChild(tr);
+    tr.querySelectorAll('.qty, .price').forEach(el => el.addEventListener('input', recalc));
+    tr.querySelector('.removeRowBtn').addEventListener('click', () => { tr.remove(); recalc(); });
+}
+
+document.getElementById('addRowBtn').addEventListener('click', rowTemplate);
+
+function recalc() {
+    let netto = 0;
+    tbody.querySelectorAll('tr').forEach(tr => {
+        const qty = parseFloat(tr.querySelector('.qty').value) || 0;
+        const price = parseFloat(tr.querySelector('.price').value) || 0;
+        const total = qty * price;
+        tr.querySelector('.row-total').value = total.toFixed(2);
+        netto += total;
+    });
+    const satz = parseFloat(document.getElementById('mwstSatz').value) || 0;
+    const mwst = netto * satz / 100;
+    document.getElementById('totalNetto').value = netto.toFixed(2);
+    document.getElementById('totalMwst').value = mwst.toFixed(2);
+    document.getElementById('totalBrutto').value = (netto + mwst).toFixed(2);
+}
+
+document.getElementById('mwstSatz').addEventListener('input', recalc);
+
+rowTemplate();
+recalc();
+</script>
 {% endblock %}

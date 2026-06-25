@@ -1,18 +1,20 @@
 from flask import (Flask, render_template, request, redirect, url_for,
-                   session, jsonify, Response, flash, abort)
+                   session, jsonify, Response, flash, abort, send_file)
 from flask_sqlalchemy import SQLAlchemy
 from werkzeug.security import generate_password_hash, check_password_hash
 from functools import wraps
 from datetime import datetime
-import json, csv, io, smtplib, os, secrets
-from email.mime.text import MIMEText
-from email.mime.multipart import MIMEMultipart
+import json, io, os, secrets, re
+import openpyxl
 
 # ─── App Setup ───────────────────────────────────────────────────────────────
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 INSTANCE_DIR = os.path.join(BASE_DIR, 'instance')
+ABLAGE_DIR = os.path.join(INSTANCE_DIR, 'ablage')
+TEMPLATE_XLSX = os.path.join(BASE_DIR, 'excel_template', 'EBD_Vorlage_leer.xlsx')
 os.makedirs(INSTANCE_DIR, exist_ok=True)
+os.makedirs(ABLAGE_DIR, exist_ok=True)
 
 
 def _get_or_create_secret_key():
@@ -29,10 +31,21 @@ def _get_or_create_secret_key():
 app = Flask(__name__)
 app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', _get_or_create_secret_key())
 app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get(
-    'DATABASE_URL', f'sqlite:///{os.path.join(INSTANCE_DIR, "formapp.db")}')
+    'DATABASE_URL', f'sqlite:///{os.path.join(INSTANCE_DIR, "ebd.db")}')
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
 db = SQLAlchemy(app)
+
+LISTE_INTERN = ['Rep. Leihgerät', 'Rep. Maschine BH', 'Ersatz Leihgerät', 'Ersatz Maschiene BH',
+                'Muster', 'Kulanz', 'Schulungen/Kurse', 'Eigenbedarf', 'Schärfservice']
+LISTE_EXTERN = ['Garantie', 'ext. Weiterverrechnung', 'Kulanz', 'Schärfservice']
+LISTE_ABTEILUNG = ['GL & WWV', 'Wareneingang', 'Kasse / Warenausgang', 'SiFa', 'Parking / Shuttlebus',
+                    'Eisenwaren /Nautic', 'Werkzeuge /Maschinen', 'Elektro', 'Sanitär', 'Fliesen',
+                    'Baustoffe', 'Holz', 'Farben / Innendeko / Ambiente', 'Stadtgarten', 'Leihservice',
+                    'Drive-In', 'Eigenbedarf Spezialfälle', 'Lehrlinge', 'Kundenzufuhr', 'NL', 'WK',
+                    'Kassen & Systeme + Empfang', 'Einkauf', 'IT', 'FiCo', 'PA']
+
+MWST_SATZ = 8.1
 
 # ─── Models ──────────────────────────────────────────────────────────────────
 
@@ -49,59 +62,33 @@ class AdminUser(db.Model):
         return check_password_hash(self.password_hash, pw)
 
 
-class FormConfig(db.Model):
-    __tablename__ = 'form_config'
+class EBDOrder(db.Model):
+    __tablename__ = 'ebd_orders'
     id = db.Column(db.Integer, primary_key=True)
-    form_name = db.Column(db.String(200), nullable=False, default='Kontaktformular')
-    form_description = db.Column(db.Text, default='')
-    success_message = db.Column(db.Text, default='Vielen Dank! Ihre Einsendung wurde gespeichert.')
-    submit_button_text = db.Column(db.String(100), default='Absenden')
-    fields_json = db.Column(db.Text, default='[]')
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    bestell_nr = db.Column(db.String(50), nullable=False)
+    firma = db.Column(db.String(200), default='')
+    adresse = db.Column(db.Text, default='')
+    verwendungszweck = db.Column(db.String(500), default='')
+    art = db.Column(db.String(20), default='Intern')
+    grund = db.Column(db.String(200), default='')
+    besteller = db.Column(db.String(200), default='')
+    abteilung = db.Column(db.String(200), default='')
+    gl = db.Column(db.String(200), default='')
+    mwst_satz = db.Column(db.Float, default=MWST_SATZ)
+    items_json = db.Column(db.Text, default='[]')
+    total_netto = db.Column(db.Float, default=0)
+    total_mwst = db.Column(db.Float, default=0)
+    total_brutto = db.Column(db.Float, default=0)
+    excel_filename = db.Column(db.String(300), default='')
 
     @property
-    def fields(self):
-        return json.loads(self.fields_json or '[]')
+    def items(self):
+        return json.loads(self.items_json or '[]')
 
-    @fields.setter
-    def fields(self, value):
-        self.fields_json = json.dumps(value, ensure_ascii=False)
-
-
-class MailConfig(db.Model):
-    __tablename__ = 'mail_config'
-    id = db.Column(db.Integer, primary_key=True)
-    enabled = db.Column(db.Boolean, default=False)
-    smtp_host = db.Column(db.String(200), default='')
-    smtp_port = db.Column(db.Integer, default=587)
-    smtp_user = db.Column(db.String(200), default='')
-    smtp_password = db.Column(db.String(200), default='')
-    use_tls = db.Column(db.Boolean, default=True)
-    use_ssl = db.Column(db.Boolean, default=False)
-    from_email = db.Column(db.String(200), default='')
-    from_name = db.Column(db.String(200), default='')
-    notification_email = db.Column(db.String(500), default='')
-    send_confirmation = db.Column(db.Boolean, default=False)
-    confirmation_email_field = db.Column(db.String(200), default='')
-    notification_subject = db.Column(db.String(500), default='Neue Formulareinsendung')
-    notification_body = db.Column(db.Text, default='')
-    confirmation_subject = db.Column(db.String(500), default='Bestätigung Ihrer Einsendung')
-    confirmation_body = db.Column(db.Text, default='')
-
-
-class Submission(db.Model):
-    __tablename__ = 'submissions'
-    id = db.Column(db.Integer, primary_key=True)
-    submitted_at = db.Column(db.DateTime, default=datetime.utcnow)
-    ip_address = db.Column(db.String(50), default='')
-    data_json = db.Column(db.Text, default='{}')
-
-    @property
-    def data(self):
-        return json.loads(self.data_json or '{}')
-
-    @data.setter
-    def data(self, value):
-        self.data_json = json.dumps(value, ensure_ascii=False)
+    @items.setter
+    def items(self, value):
+        self.items_json = json.dumps(value, ensure_ascii=False)
 
 
 # ─── Auth ────────────────────────────────────────────────────────────────────
@@ -115,66 +102,156 @@ def login_required(f):
     return decorated
 
 
+def _slugify(value):
+    value = re.sub(r'[^A-Za-z0-9_-]+', '-', value.strip())
+    return value.strip('-') or 'firma'
+
+
+def _next_bestell_nr():
+    last = EBDOrder.query.order_by(EBDOrder.id.desc()).first()
+    if last and last.bestell_nr.isdigit():
+        return str(int(last.bestell_nr) + 1)
+    return '731'
+
+
+# ─── Excel generation ────────────────────────────────────────────────────────
+
+def _generate_excel(order):
+    wb = openpyxl.load_workbook(TEMPLATE_XLSX)
+    ws = wb['EBD-Formular']
+
+    address_lines = [l for l in (order.adresse or '').splitlines() if l.strip()][:4]
+    for i, line in enumerate(address_lines):
+        ws.cell(row=4 + i, column=6, value=line)  # F4..F7
+
+    ws['E11'] = f'EBD-Bestell-Nr.: {order.bestell_nr}'
+    ws['C17'] = order.verwendungszweck
+
+    if order.art == 'Intern':
+        ws['B18'] = order.grund
+    else:
+        ws['E18'] = order.grund
+
+    items = order.items
+    start_row = 20
+    for i, item in enumerate(items[:5]):
+        r = start_row + i
+        ws.cell(row=r, column=1, value=item.get('artikelnummer', ''))
+        ws.cell(row=r, column=3, value=item.get('artikelname', ''))
+        ws.cell(row=r, column=6, value=item.get('menge', 0))
+        ws.cell(row=r, column=7, value=item.get('einzelpreis', 0))
+        ws.cell(row=r, column=8, value=f'=G{r}*F{r}')
+
+    ws['H25'] = order.total_mwst
+    ws['H26'] = order.total_brutto
+
+    ws['B39'] = order.besteller
+    ws['E39'] = order.abteilung
+    ws['E41'] = order.gl
+
+    buf = io.BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+    return buf
+
+
+def _save_to_ablage(order, buf):
+    year_dir = os.path.join(ABLAGE_DIR, str(order.created_at.year))
+    os.makedirs(year_dir, exist_ok=True)
+    filename = f'EBD_{order.bestell_nr}_{_slugify(order.firma)}_{order.created_at.strftime("%Y%m%d")}.xlsx'
+    path = os.path.join(year_dir, filename)
+    with open(path, 'wb') as f:
+        f.write(buf.getvalue())
+    order.excel_filename = os.path.join(str(order.created_at.year), filename)
+
+
 # ─── Public Routes ───────────────────────────────────────────────────────────
 
 @app.route('/')
 def index():
-    config = _get_or_create_form_config()
-    return render_template('form.html', config=config)
+    next_nr = _next_bestell_nr()
+    return render_template('form.html', next_nr=next_nr,
+                           liste_intern=LISTE_INTERN, liste_extern=LISTE_EXTERN,
+                           liste_abteilung=LISTE_ABTEILUNG, mwst_satz=MWST_SATZ,
+                           today=datetime.now().strftime('%d.%m.%Y'))
 
 
 @app.route('/submit', methods=['POST'])
 def submit():
-    config = FormConfig.query.first()
-    if not config:
-        abort(404)
+    firma = request.form.get('firma', '').strip()
+    adresse = request.form.get('adresse', '').strip()
+    bestell_nr = request.form.get('bestell_nr', '').strip() or _next_bestell_nr()
+    verwendungszweck = request.form.get('verwendungszweck', '').strip()
+    art = request.form.get('art', 'Intern')
+    grund = request.form.get('grund', '').strip()
+    besteller = request.form.get('besteller', '').strip()
+    abteilung = request.form.get('abteilung', '').strip()
+    gl = request.form.get('gl', '').strip()
+    mwst_satz = float(request.form.get('mwst_satz') or MWST_SATZ)
 
-    # Honeypot field — bots fill this, humans don't
-    if request.form.get('_hp_email', ''):
-        return redirect(url_for('success'))
+    if not firma or not verwendungszweck:
+        flash('Bitte Firma und Verwendungszweck ausfüllen.', 'error')
+        return redirect(url_for('index'))
 
-    data = {}
-    for field in config.fields:
-        name = field.get('name', '')
+    artikelnummern = request.form.getlist('artikelnummer[]')
+    artikelnamen = request.form.getlist('artikelname[]')
+    mengen = request.form.getlist('menge[]')
+    preise = request.form.getlist('einzelpreis[]')
+
+    items = []
+    total_netto = 0.0
+    for i in range(len(artikelnamen)):
+        name = artikelnamen[i].strip()
         if not name:
             continue
-        ftype = field.get('type', 'text')
-        if ftype == 'checkbox':
-            data[name] = 'Ja' if name in request.form else 'Nein'
-        elif ftype in ('checkbox_group',):
-            data[name] = request.form.getlist(name)
-        else:
-            data[name] = request.form.get(name, '')
+        try:
+            menge = float(mengen[i] or 0)
+            preis = float(preise[i] or 0)
+        except (ValueError, IndexError):
+            menge, preis = 0, 0
+        gesamt = menge * preis
+        total_netto += gesamt
+        items.append({'artikelnummer': artikelnummern[i] if i < len(artikelnummern) else '',
+                      'artikelname': name, 'menge': menge, 'einzelpreis': preis, 'gesamtpreis': gesamt})
 
-    submission = Submission(ip_address=request.remote_addr or '')
-    submission.data = data
-    db.session.add(submission)
+    if not items:
+        flash('Bitte mindestens eine Artikelposition erfassen.', 'error')
+        return redirect(url_for('index'))
+
+    total_mwst = round(total_netto * mwst_satz / 100, 2)
+    total_brutto = round(total_netto + total_mwst, 2)
+
+    order = EBDOrder(bestell_nr=bestell_nr, firma=firma, adresse=adresse,
+                     verwendungszweck=verwendungszweck, art=art, grund=grund,
+                     besteller=besteller, abteilung=abteilung, gl=gl, mwst_satz=mwst_satz,
+                     total_netto=round(total_netto, 2), total_mwst=total_mwst, total_brutto=total_brutto)
+    order.items = items
+    db.session.add(order)
     db.session.commit()
 
-    mail_cfg = MailConfig.query.first()
-    if mail_cfg and mail_cfg.enabled:
-        try:
-            _send_notification(mail_cfg, config, submission)
-        except Exception as exc:
-            app.logger.error('Notification mail failed: %s', exc)
-        if mail_cfg.send_confirmation and mail_cfg.confirmation_email_field:
-            recipient = data.get(mail_cfg.confirmation_email_field, '')
-            if recipient and '@' in recipient:
-                try:
-                    _send_confirmation(mail_cfg, config, submission, recipient)
-                except Exception as exc:
-                    app.logger.error('Confirmation mail failed: %s', exc)
+    buf = _generate_excel(order)
+    _save_to_ablage(order, io.BytesIO(buf.getvalue()))
+    db.session.commit()
 
-    return redirect(url_for('success'))
+    return redirect(url_for('success', oid=order.id))
 
 
-@app.route('/success')
-def success():
-    config = FormConfig.query.first()
-    return render_template('success.html', config=config)
+@app.route('/success/<int:oid>')
+def success(oid):
+    order = EBDOrder.query.get_or_404(oid)
+    return render_template('success.html', order=order)
 
 
-# ─── Admin Routes ────────────────────────────────────────────────────────────
+@app.route('/download/<int:oid>')
+def download(oid):
+    order = EBDOrder.query.get_or_404(oid)
+    buf = _generate_excel(order)
+    filename = f'EBD_{order.bestell_nr}_{_slugify(order.firma)}.xlsx'
+    return send_file(buf, as_attachment=True, download_name=filename,
+                     mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+
+
+# ─── Admin Routes (Ablage / Archiv) ──────────────────────────────────────────
 
 @app.route('/admin')
 def admin_index():
@@ -210,169 +287,49 @@ def admin_logout():
 @app.route('/admin/dashboard')
 @login_required
 def admin_dashboard():
-    total = Submission.query.count()
-    recent = Submission.query.order_by(Submission.submitted_at.desc()).limit(5).all()
-    config = FormConfig.query.first()
-    return render_template('admin/dashboard.html', total=total, recent=recent, config=config)
-
-
-@app.route('/admin/form-builder', methods=['GET', 'POST'])
-@login_required
-def admin_form_builder():
-    config = _get_or_create_form_config()
-    if request.method == 'POST':
-        config.form_name = request.form.get('form_name', '').strip() or 'Formular'
-        config.form_description = request.form.get('form_description', '').strip()
-        config.success_message = request.form.get('success_message', '').strip()
-        config.submit_button_text = request.form.get('submit_button_text', 'Absenden').strip()
-        raw = request.form.get('fields_json', '[]')
-        try:
-            config.fields = json.loads(raw)
-        except (json.JSONDecodeError, ValueError):
-            flash('Fehler beim Speichern der Felder.', 'error')
-            return redirect(url_for('admin_form_builder'))
-        db.session.commit()
-        flash('Formular erfolgreich gespeichert!', 'success')
-        return redirect(url_for('admin_form_builder'))
-    return render_template('admin/form_builder.html', config=config)
-
-
-@app.route('/admin/submissions')
-@login_required
-def admin_submissions():
     page = request.args.get('page', 1, type=int)
     search = request.args.get('search', '').strip()
-    query = Submission.query.order_by(Submission.submitted_at.desc())
+    query = EBDOrder.query.order_by(EBDOrder.created_at.desc())
     if search:
-        query = query.filter(Submission.data_json.ilike(f'%{search}%'))
-    submissions = query.paginate(page=page, per_page=25, error_out=False)
-    config = FormConfig.query.first()
-    return render_template('admin/submissions.html',
-                           submissions=submissions, config=config, search=search)
+        like = f'%{search}%'
+        query = query.filter(db.or_(EBDOrder.firma.ilike(like),
+                                    EBDOrder.bestell_nr.ilike(like),
+                                    EBDOrder.verwendungszweck.ilike(like)))
+    orders = query.paginate(page=page, per_page=25, error_out=False)
+    total = EBDOrder.query.count()
+    total_brutto_sum = db.session.query(db.func.sum(EBDOrder.total_brutto)).scalar() or 0
+    return render_template('admin/dashboard.html', orders=orders, total=total,
+                           total_brutto_sum=total_brutto_sum, search=search)
 
 
-@app.route('/admin/submissions/<int:sid>/delete', methods=['POST'])
+@app.route('/admin/ablage/<int:oid>/download')
 @login_required
-def admin_delete_submission(sid):
-    sub = Submission.query.get_or_404(sid)
-    db.session.delete(sub)
+def admin_download(oid):
+    order = EBDOrder.query.get_or_404(oid)
+    if order.excel_filename:
+        path = os.path.join(ABLAGE_DIR, order.excel_filename)
+        if os.path.exists(path):
+            return send_file(path, as_attachment=True,
+                             download_name=os.path.basename(path),
+                             mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+    buf = _generate_excel(order)
+    filename = f'EBD_{order.bestell_nr}_{_slugify(order.firma)}.xlsx'
+    return send_file(buf, as_attachment=True, download_name=filename,
+                     mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+
+
+@app.route('/admin/ablage/<int:oid>/delete', methods=['POST'])
+@login_required
+def admin_delete_order(oid):
+    order = EBDOrder.query.get_or_404(oid)
+    if order.excel_filename:
+        path = os.path.join(ABLAGE_DIR, order.excel_filename)
+        if os.path.exists(path):
+            os.remove(path)
+    db.session.delete(order)
     db.session.commit()
-    flash('Einsendung gelöscht.', 'success')
-    return redirect(url_for('admin_submissions'))
-
-
-@app.route('/admin/submissions/delete-all', methods=['POST'])
-@login_required
-def admin_delete_all_submissions():
-    Submission.query.delete()
-    db.session.commit()
-    flash('Alle Einsendungen gelöscht.', 'success')
-    return redirect(url_for('admin_submissions'))
-
-
-@app.route('/admin/export')
-@login_required
-def admin_export():
-    fmt = request.args.get('format', 'csv')
-    config = FormConfig.query.first()
-    submissions = Submission.query.order_by(Submission.submitted_at.asc()).all()
-
-    if fmt == 'json':
-        data = []
-        for s in submissions:
-            row = {'id': s.id,
-                   'submitted_at': s.submitted_at.strftime('%Y-%m-%d %H:%M:%S'),
-                   'ip_address': s.ip_address}
-            row.update(s.data)
-            data.append(row)
-        filename = f'einsendungen_{datetime.now().strftime("%Y%m%d")}.json'
-        return Response(
-            json.dumps(data, ensure_ascii=False, indent=2),
-            mimetype='application/json',
-            headers={'Content-Disposition': f'attachment; filename={filename}'}
-        )
-
-    # CSV
-    output = io.StringIO()
-    output.write('﻿')  # BOM for Excel UTF-8
-
-    field_names = ['ID', 'Datum', 'IP-Adresse']
-    field_map = {}
-    if config:
-        for f in config.fields:
-            if f.get('name'):
-                field_map[f['name']] = f.get('label', f['name'])
-                field_names.append(f.get('label', f['name']))
-
-    writer = csv.writer(output, delimiter=';', quoting=csv.QUOTE_ALL)
-    writer.writerow(field_names)
-
-    for s in submissions:
-        row = [s.id, s.submitted_at.strftime('%d.%m.%Y %H:%M'), s.ip_address]
-        for fname, flabel in field_map.items():
-            val = s.data.get(fname, '')
-            row.append(', '.join(val) if isinstance(val, list) else val)
-        writer.writerow(row)
-
-    filename = f'einsendungen_{datetime.now().strftime("%Y%m%d")}.csv'
-    return Response(
-        output.getvalue(),
-        mimetype='text/csv; charset=utf-8',
-        headers={'Content-Disposition': f'attachment; filename={filename}'}
-    )
-
-
-@app.route('/admin/mail-settings', methods=['GET', 'POST'])
-@login_required
-def admin_mail_settings():
-    cfg = MailConfig.query.first()
-    if not cfg:
-        cfg = MailConfig()
-        db.session.add(cfg)
-        db.session.commit()
-
-    if request.method == 'POST':
-        cfg.enabled = 'enabled' in request.form
-        cfg.smtp_host = request.form.get('smtp_host', '').strip()
-        cfg.smtp_port = int(request.form.get('smtp_port') or 587)
-        cfg.smtp_user = request.form.get('smtp_user', '').strip()
-        new_pw = request.form.get('smtp_password', '')
-        if new_pw:
-            cfg.smtp_password = new_pw
-        cfg.use_tls = 'use_tls' in request.form
-        cfg.use_ssl = 'use_ssl' in request.form
-        cfg.from_email = request.form.get('from_email', '').strip()
-        cfg.from_name = request.form.get('from_name', '').strip()
-        cfg.notification_email = request.form.get('notification_email', '').strip()
-        cfg.send_confirmation = 'send_confirmation' in request.form
-        cfg.confirmation_email_field = request.form.get('confirmation_email_field', '').strip()
-        cfg.notification_subject = request.form.get('notification_subject', '').strip()
-        cfg.notification_body = request.form.get('notification_body', '').strip()
-        cfg.confirmation_subject = request.form.get('confirmation_subject', '').strip()
-        cfg.confirmation_body = request.form.get('confirmation_body', '').strip()
-        db.session.commit()
-        flash('E-Mail-Einstellungen gespeichert!', 'success')
-        return redirect(url_for('admin_mail_settings'))
-
-    form_config = FormConfig.query.first()
-    return render_template('admin/mail_settings.html', cfg=cfg, form_config=form_config)
-
-
-@app.route('/admin/mail-test', methods=['POST'])
-@login_required
-def admin_mail_test():
-    cfg = MailConfig.query.first()
-    test_email = request.form.get('test_email', '').strip()
-    if not cfg or not test_email:
-        flash('Bitte zuerst Einstellungen speichern und Test-Adresse eingeben.', 'error')
-        return redirect(url_for('admin_mail_settings'))
-    try:
-        _send_raw_email(cfg, [test_email], 'Test-E-Mail',
-                        'Dies ist eine Test-E-Mail von Ihrem Formular-System.\n\nWenn Sie diese E-Mail erhalten, funktioniert der Mail-Versand korrekt.')
-        flash(f'Test-E-Mail erfolgreich an {test_email} gesendet!', 'success')
-    except Exception as exc:
-        flash(f'Fehler beim Senden: {exc}', 'error')
-    return redirect(url_for('admin_mail_settings'))
+    flash('Bestellung aus der Ablage gelöscht.', 'success')
+    return redirect(url_for('admin_dashboard'))
 
 
 @app.route('/admin/change-password', methods=['POST'])
@@ -395,93 +352,7 @@ def admin_change_password():
     return redirect(url_for('admin_dashboard'))
 
 
-# ─── Email Helpers ───────────────────────────────────────────────────────────
-
-def _get_smtp(cfg):
-    if cfg.use_ssl:
-        conn = smtplib.SMTP_SSL(cfg.smtp_host, cfg.smtp_port, timeout=15)
-    else:
-        conn = smtplib.SMTP(cfg.smtp_host, cfg.smtp_port, timeout=15)
-        if cfg.use_tls:
-            conn.starttls()
-    if cfg.smtp_user:
-        conn.login(cfg.smtp_user, cfg.smtp_password)
-    return conn
-
-
-def _send_raw_email(cfg, recipients, subject, body_text, body_html=None):
-    msg = MIMEMultipart('alternative')
-    from_hdr = f"{cfg.from_name} <{cfg.from_email}>" if cfg.from_name else cfg.from_email
-    msg['From'] = from_hdr
-    msg['To'] = ', '.join(recipients)
-    msg['Subject'] = subject
-    msg.attach(MIMEText(body_text, 'plain', 'utf-8'))
-    if body_html:
-        msg.attach(MIMEText(body_html, 'html', 'utf-8'))
-    with _get_smtp(cfg) as conn:
-        conn.sendmail(cfg.from_email, recipients, msg.as_string())
-
-
-def _format_submission_text(form_config, submission):
-    lines = [f'Formular: {form_config.form_name}',
-             f'Datum: {submission.submitted_at.strftime("%d.%m.%Y %H:%M")}',
-             f'IP-Adresse: {submission.ip_address}', '']
-    for field in form_config.fields:
-        name = field.get('name', '')
-        label = field.get('label', name)
-        val = submission.data.get(name, '')
-        if isinstance(val, list):
-            val = ', '.join(val)
-        lines.append(f'{label}: {val}')
-    return '\n'.join(lines)
-
-
-def _render_template_str(template, data):
-    result = template
-    for k, v in data.items():
-        result = result.replace('{' + k + '}', ', '.join(v) if isinstance(v, list) else str(v))
-    return result
-
-
-def _send_notification(mail_cfg, form_config, submission):
-    recipients = [e.strip() for e in mail_cfg.notification_email.split(',') if e.strip()]
-    if not recipients:
-        return
-    subject = mail_cfg.notification_subject or 'Neue Formulareinsendung'
-    body = (_render_template_str(mail_cfg.notification_body, submission.data)
-            if mail_cfg.notification_body
-            else _format_submission_text(form_config, submission))
-    _send_raw_email(mail_cfg, recipients, subject, body)
-
-
-def _send_confirmation(mail_cfg, form_config, submission, recipient):
-    subject = mail_cfg.confirmation_subject or 'Bestätigung Ihrer Einsendung'
-    body = (_render_template_str(mail_cfg.confirmation_body, submission.data)
-            if mail_cfg.confirmation_body
-            else f'Vielen Dank für Ihre Einsendung!\n\n{_format_submission_text(form_config, submission)}')
-    _send_raw_email(mail_cfg, [recipient], subject, body)
-
-
 # ─── Init Helpers ────────────────────────────────────────────────────────────
-
-def _get_or_create_form_config():
-    config = FormConfig.query.first()
-    if not config:
-        config = FormConfig()
-        config.fields = [
-            {'id': 'f1', 'name': 'name', 'label': 'Name', 'type': 'text',
-             'placeholder': 'Ihr vollständiger Name', 'required': True, 'help_text': '', 'options': []},
-            {'id': 'f2', 'name': 'email', 'label': 'E-Mail-Adresse', 'type': 'email',
-             'placeholder': 'ihre@email.de', 'required': True, 'help_text': '', 'options': []},
-            {'id': 'f3', 'name': 'betreff', 'label': 'Betreff', 'type': 'text',
-             'placeholder': 'Worum geht es?', 'required': False, 'help_text': '', 'options': []},
-            {'id': 'f4', 'name': 'nachricht', 'label': 'Nachricht', 'type': 'textarea',
-             'placeholder': 'Ihre Nachricht...', 'required': True, 'help_text': '', 'options': []},
-        ]
-        db.session.add(config)
-        db.session.commit()
-    return config
-
 
 def init_db():
     db.create_all()
@@ -493,9 +364,6 @@ def init_db():
         db.session.add(user)
         print(f'[INIT] Admin-Benutzer erstellt: {admin_user} / {admin_pass}')
         print('[INIT] Bitte Passwort nach dem ersten Login ändern!')
-    _get_or_create_form_config()
-    if not MailConfig.query.first():
-        db.session.add(MailConfig())
     db.session.commit()
 
 
