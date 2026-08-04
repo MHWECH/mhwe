@@ -31,8 +31,17 @@ app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', _get_or_create_secret_ke
 app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get(
     'DATABASE_URL', f'sqlite:///{os.path.join(INSTANCE_DIR, "formapp.db")}')
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+# Mt Pelerin Widget – öffentlicher Integration-Key (_ctkn). Optional; wenn leer,
+# wird das Widget nicht geladen. Siehe .env.example.
+app.config['MTPELERIN_KEY'] = os.environ.get('MTPELERIN_KEY', '')
 
 db = SQLAlchemy(app)
+
+
+@app.context_processor
+def inject_mtpelerin():
+    """Stellt den Mt-Pelerin-Key in allen Templates bereit."""
+    return {'mtpelerin_key': app.config.get('MTPELERIN_KEY', '')}
 
 # ─── Models ──────────────────────────────────────────────────────────────────
 

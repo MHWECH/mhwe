@@ -105,6 +105,20 @@
                 </form>
             </div>
         </div>
+
+        {% if mtpelerin_key %}
+        <div class="card shadow-sm mt-4">
+            <div class="card-body p-4 p-md-5 text-center">
+                <h2 class="h5 mb-2">Krypto kaufen oder verkaufen</h2>
+                <p class="text-muted mb-4">
+                    Tauschen Sie sicher und schnell mit Mt&nbsp;Pelerin.
+                </p>
+                <button type="button" class="btn btn-primary btn-lg" onclick="openMtpModal()">
+                    Krypto kaufen / verkaufen
+                </button>
+            </div>
+        </div>
+        {% endif %}
     </div>
 </div>
 {% endblock %}
