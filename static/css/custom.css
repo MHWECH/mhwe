@@ -101,3 +101,14 @@ code {
     border-radius: .25em;
     font-size: .85em;
 }
+
+/* ── Bitcoin donation widget & footer ────────────────────────────────────── */
+
+.blink-donation {
+    display: flex;
+    justify-content: center;
+}
+
+.site-footer {
+    border-top: 1px solid rgba(0, 0, 0, .08);
+}
