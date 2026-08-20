@@ -34,6 +34,11 @@ app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
 db = SQLAlchemy(app)
 
+
+@app.context_processor
+def inject_current_year():
+    return {'current_year': datetime.now().year}
+
 # ─── Models ──────────────────────────────────────────────────────────────────
 
 class AdminUser(db.Model):
