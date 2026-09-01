@@ -25,9 +25,10 @@ HOST="${HOST:-0.0.0.0}"
 PORT="${PORT:-5000}"
 
 echo "=========================================="
-echo "  Formular-WebApp startet..."
-echo "  Adresse: http://$HOST:$PORT"
-echo "  Admin:   http://$HOST:$PORT/admin"
+echo "  WebApp startet..."
+echo "  Formular:    http://$HOST:$PORT"
+echo "  Abstimmung:  http://$HOST:$PORT/stimme/"
+echo "  Admin:       http://$HOST:$PORT/admin"
 echo "=========================================="
 
 exec python -m gunicorn wsgi:application \

@@ -1,0 +1,25 @@
+{% extends 'base.html' %}
+{% block title %}{{ headline }}{% endblock %}
+{% block extra_head %}<meta name="referrer" content="no-referrer">{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-lg-6 col-md-9">
+        <div class="card shadow-sm">
+            <div class="card-body p-4 p-md-5 text-center">
+                <div class="display-6 mb-3">
+                    {% if tone == 'danger' %}⛔{% elif tone == 'warning' %}⚠{% else %}ℹ{% endif %}
+                </div>
+                <h1 class="h4 mb-3">{{ headline }}</h1>
+                {% if election %}
+                <p class="text-muted mb-3"><strong>{{ election.title }}</strong></p>
+                {% endif %}
+                <p class="text-muted">{{ message }}</p>
+                <a href="{{ url_for('voting.vote_entry') }}" class="btn btn-outline-secondary btn-sm mt-3">
+                    Zugangscode eingeben
+                </a>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,68 @@
+{% extends 'admin/base.html' %}
+{% block title %}Abstimmungen{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h1 class="h3 mb-0">🗳 Abstimmungen</h1>
+</div>
+
+<div class="card shadow-sm mb-4">
+    <div class="card-body">
+        <form method="post" action="{{ url_for('voting.admin_election_new') }}" class="row g-2">
+            <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+            <div class="col-md-9">
+                <input type="text" class="form-control" name="title" required
+                       placeholder="Titel, z. B. „Ordentliche Eigentümerversammlung Villas Tropimar 2026“">
+            </div>
+            <div class="col-md-3 d-grid">
+                <button class="btn btn-primary">Neue Abstimmung anlegen</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+{% if not elections %}
+<div class="alert alert-info">Noch keine Abstimmung angelegt.</div>
+{% else %}
+<div class="card shadow-sm">
+    <div class="table-responsive">
+        <table class="table mb-0">
+            <thead>
+                <tr>
+                    <th>Titel</th>
+                    <th>Status</th>
+                    <th>Frist</th>
+                    <th class="text-end">Beteiligung</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for election in elections %}
+                <tr>
+                    <td>
+                        <a href="{{ url_for('voting.admin_election', eid=election.id) }}"
+                           class="fw-semibold text-decoration-none">{{ election.title }}</a>
+                        <div class="small text-muted">angelegt {{ fmt_local(election.created_at, election) }}</div>
+                    </td>
+                    <td>
+                        {% if election.status == 'draft' %}<span class="badge bg-secondary">Entwurf</span>
+                        {% elif election.status == 'open' %}<span class="badge bg-success">läuft</span>
+                        {% elif election.status == 'closed' %}<span class="badge bg-warning text-dark">geschlossen</span>
+                        {% else %}<span class="badge bg-primary">veröffentlicht</span>{% endif %}
+                    </td>
+                    <td class="small">{{ fmt_local(election.closes_at, election) }}</td>
+                    <td class="text-end">
+                        {{ stats[election.id].voted }} / {{ stats[election.id].voters }}
+                    </td>
+                    <td class="text-end">
+                        <a class="btn btn-sm btn-outline-secondary"
+                           href="{{ url_for('voting.admin_election', eid=election.id) }}">Öffnen</a>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endif %}
+{% endblock %}

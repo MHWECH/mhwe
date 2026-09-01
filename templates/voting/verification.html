@@ -1,0 +1,201 @@
+{% extends 'base.html' %}
+{% block title %}Verifikation – {{ election.title }}{% endblock %}
+{% block extra_head %}<meta name="referrer" content="no-referrer">{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-lg-10">
+
+        <div class="card shadow-sm mb-3">
+            <div class="card-body p-4 p-md-5">
+                <h1 class="h3 mb-2">Ergebnis und Verifikation</h1>
+                <p class="text-muted mb-1">{{ election.title }}</p>
+                <p class="small text-muted">
+                    Abstimmung geschlossen am {{ fmt_local(election.closed_at, election) }},
+                    Ergebnis veröffentlicht am {{ fmt_local(election.published_at, election) }}.
+                </p>
+
+                <div class="row g-3 mt-2">
+                    <div class="col-6 col-md-3">
+                        <div class="border rounded p-3 text-center h-100">
+                            <div class="h4 mb-0">{{ results.cast_heads }}</div>
+                            <small class="text-muted">abgegebene Stimmen</small>
+                        </div>
+                    </div>
+                    <div class="col-6 col-md-3">
+                        <div class="border rounded p-3 text-center h-100">
+                            <div class="h4 mb-0">{{ results.eligible_heads }}</div>
+                            <small class="text-muted">Stimmberechtigte</small>
+                        </div>
+                    </div>
+                    <div class="col-6 col-md-3">
+                        <div class="border rounded p-3 text-center h-100">
+                            <div class="h4 mb-0">{{ '%.1f'|format(results.turnout_heads) }} %</div>
+                            <small class="text-muted">Beteiligung (Köpfe)</small>
+                        </div>
+                    </div>
+                    <div class="col-6 col-md-3">
+                        <div class="border rounded p-3 text-center h-100">
+                            <div class="h4 mb-0">{{ '%.1f'|format(results.turnout_weight) }} %</div>
+                            <small class="text-muted">Beteiligung (Anteile)</small>
+                        </div>
+                    </div>
+                </div>
+
+                {% if election.quorum_heads or election.quorum_weight %}
+                <div class="alert {{ 'alert-success' if results.quorum_ok else 'alert-warning' }} mt-3 mb-0">
+                    {% if results.quorum_ok %}✓ Das erforderliche Quorum wurde erreicht.
+                    {% else %}⚠ Das erforderliche Quorum wurde nicht erreicht.{% endif %}
+                </div>
+                {% endif %}
+            </div>
+        </div>
+
+        {% for item in results.questions %}
+        <div class="card shadow-sm mb-3">
+            <div class="card-body p-4">
+                <div class="text-muted small text-uppercase">Beschlussantrag {{ loop.index }}</div>
+                <h2 class="h5">{{ item.question.text }}</h2>
+                <p class="small text-muted">Erforderlich: {{ item.question.majority_label }}</p>
+
+                <div class="table-responsive">
+                    <table class="table table-sm align-middle mb-0">
+                        <thead>
+                            <tr>
+                                <th>Antwort</th>
+                                <th class="text-end">Stimmen (Köpfe)</th>
+                                {% if election.weighted %}<th class="text-end">Anteile</th>{% endif %}
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for opt in item.question.options %}
+                            <tr>
+                                <td>{{ opt.label }}</td>
+                                <td class="text-end">{{ item.tallies[opt.value].heads }}</td>
+                                {% if election.weighted %}
+                                <td class="text-end">{{ '%g'|format(item.tallies[opt.value].weight) }}</td>
+                                {% endif %}
+                            </tr>
+                            {% endfor %}
+                            {% if item.invalid.heads %}
+                            <tr class="text-muted">
+                                <td>ungültig / ohne Angabe</td>
+                                <td class="text-end">{{ item.invalid.heads }}</td>
+                                {% if election.weighted %}
+                                <td class="text-end">{{ '%g'|format(item.invalid.weight) }}</td>
+                                {% endif %}
+                            </tr>
+                            {% endif %}
+                        </tbody>
+                    </table>
+                </div>
+
+                {% if item.evaluation %}
+                {% set decisive = item.evaluation.weight if election.weighted else item.evaluation.heads %}
+                {% set passed = (item.evaluation.heads.angenommen and item.evaluation.weight.angenommen)
+                                if election.double_majority else decisive.angenommen %}
+                <div class="alert {{ 'alert-success' if passed and results.quorum_ok else 'alert-secondary' }} mt-3 mb-0">
+                    <strong>{{ 'Antrag angenommen' if passed else 'Antrag abgelehnt' }}</strong>
+                    {% if election.double_majority %}
+                    <div class="small mt-1">
+                        Nach Köpfen: {{ 'angenommen' if item.evaluation.heads.angenommen else 'abgelehnt' }} ·
+                        Nach Anteilen: {{ 'angenommen' if item.evaluation.weight.angenommen else 'abgelehnt' }}
+                        (Doppelmehrheit erforderlich)
+                    </div>
+                    {% endif %}
+                    {% if not results.quorum_ok %}
+                    <div class="small mt-1">Hinweis: Das Quorum wurde nicht erreicht.</div>
+                    {% endif %}
+                </div>
+                {% endif %}
+            </div>
+        </div>
+        {% endfor %}
+
+        <div class="card shadow-sm mb-3">
+            <div class="card-body p-4">
+                <h2 class="h5 mb-3">Urnenliste</h2>
+                <p class="small text-muted">
+                    Suchen Sie Ihren Quittungscode in der Liste. Finden Sie ihn,
+                    ist Ihr Stimmzettel unverändert in der Auszählung enthalten.
+                    Die Liste ist nach Code sortiert – die Reihenfolge sagt nichts
+                    über den Zeitpunkt der Stimmabgabe aus.
+                </p>
+
+                <input type="search" class="form-control mb-3" id="codeSearch"
+                       placeholder="Quittungscode suchen, z. B. K7F2-9QMX" autocomplete="off">
+
+                <div class="table-responsive" style="max-height: 60vh; overflow-y: auto;">
+                    <table class="table table-sm table-striped mb-0" id="urnTable">
+                        <thead class="sticky-top bg-white">
+                            <tr>
+                                <th>Quittungscode</th>
+                                {% if show_answers %}
+                                {% for item in results.questions %}
+                                <th>TOP {{ loop.index }}</th>
+                                {% endfor %}
+                                {% if election.weighted %}<th class="text-end">Anteil</th>{% endif %}
+                                {% endif %}
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for ballot in ballots %}
+                            <tr>
+                                <td class="font-monospace">{{ ballot.receipt_code }}</td>
+                                {% if show_answers %}
+                                {% for item in results.questions %}
+                                {% set answer = ballot.answers.get(item.question.id|string, '') %}
+                                <td class="small">
+                                    {% for opt in item.question.options %}
+                                    {% if opt.value == answer or (answer is iterable and answer is not string and opt.value in answer) %}
+                                    {{ opt.label }}
+                                    {% endif %}
+                                    {% endfor %}
+                                </td>
+                                {% endfor %}
+                                {% if election.weighted %}
+                                <td class="text-end small">{{ '%g'|format(ballot.weight) }}</td>
+                                {% endif %}
+                                {% endif %}
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+
+                {% if mode == 'codes' %}
+                <p class="small text-muted mt-3 mb-0">
+                    Zum Schutz des Stimmgeheimnisses werden hier nur die Quittungscodes
+                    veröffentlicht, nicht die einzelnen Stimmen. Die vollständige
+                    Urnenliste liegt dem Versammlungsprotokoll bei und kann von der
+                    Rechnungsprüfung bzw. dem Verwaltungsbeirat nachgezählt werden.
+                </p>
+                {% endif %}
+            </div>
+        </div>
+
+        <div class="card shadow-sm mb-5">
+            <div class="card-body p-4">
+                <h2 class="h6">Fingerabdruck der Urne</h2>
+                <p class="small text-muted mb-2">
+                    Diese Prüfsumme wurde beim Schliessen der Abstimmung berechnet und
+                    im Protokoll festgehalten. Sie ändert sich, sobald auch nur ein
+                    Stimmzettel nachträglich hinzugefügt, entfernt oder geändert wird.
+                </p>
+                <code class="d-block text-break">{{ results.fingerprint }}</code>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+document.getElementById('codeSearch').addEventListener('input', function () {
+    const needle = this.value.trim().toUpperCase();
+    document.querySelectorAll('#urnTable tbody tr').forEach(function (row) {
+        row.style.display = row.cells[0].textContent.toUpperCase().includes(needle) ? '' : 'none';
+    });
+});
+</script>
+{% endblock %}

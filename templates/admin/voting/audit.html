@@ -1,0 +1,70 @@
+{% extends 'admin/base.html' %}
+{% block title %}Protokoll{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+    <div>
+        <h1 class="h3 mb-1">Protokoll</h1>
+        <p class="text-muted mb-0">{{ election.title }}</p>
+    </div>
+    <div class="d-flex gap-2">
+        <a class="btn btn-sm btn-outline-secondary"
+           href="{{ url_for('voting.admin_export_audit', eid=election.id) }}">⬇ CSV</a>
+        <a class="btn btn-sm btn-outline-secondary"
+           href="{{ url_for('voting.admin_election', eid=election.id) }}">← Zurück</a>
+    </div>
+</div>
+
+<div class="alert {{ 'alert-success' if chain_ok else 'alert-danger' }}">
+    {% if chain_ok %}
+    ✅ Die Hashkette ist unversehrt. Jeder Eintrag enthält die Prüfsumme seines
+    Vorgängers – nachträgliches Ändern, Einfügen oder Löschen eines Eintrags wäre
+    hier sichtbar.
+    {% else %}
+    ❌ Die Hashkette ist ab Eintrag Nr. {{ chain_error + 1 }} gebrochen. Das
+    Protokoll wurde nachträglich verändert.
+    {% endif %}
+</div>
+
+<div class="alert alert-info small">
+    Stimmabgaben werden bewusst ohne Person, ohne Quittungscode und nur tagesgenau
+    protokolliert. Andernfalls liesse sich über den Zeitstempel rekonstruieren, wer
+    wie abgestimmt hat.
+</div>
+
+<div class="card shadow-sm mb-5">
+    <div class="table-responsive">
+        <table class="table table-sm mb-0">
+            <thead>
+                <tr>
+                    <th>Nr.</th>
+                    <th>Zeitpunkt</th>
+                    <th>Benutzer</th>
+                    <th>Vorgang</th>
+                    <th>Details</th>
+                    <th>Hash</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for entry in entries %}
+                <tr>
+                    <td>{{ loop.index }}</td>
+                    <td class="small text-nowrap">
+                        {% if entry.action == 'stimmabgabe' %}
+                        {{ fmt_local(entry.at, election, false) }}
+                        {% else %}{{ fmt_local(entry.at, election) }}{% endif %}
+                    </td>
+                    <td class="small">{{ entry.actor }}</td>
+                    <td class="small"><code>{{ entry.action }}</code></td>
+                    <td class="small">{{ entry.details }}</td>
+                    <td class="small font-monospace text-muted">{{ entry.entry_hash[:12] }}…</td>
+                </tr>
+                {% endfor %}
+                {% if not entries %}
+                <tr><td colspan="6" class="text-center text-muted py-4">Noch keine Einträge.</td></tr>
+                {% endif %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,193 @@
+{% extends 'admin/base.html' %}
+{% block title %}Stimmregister{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+    <div>
+        <h1 class="h3 mb-1">Stimmregister</h1>
+        <p class="text-muted mb-0">
+            {{ election.title }} · {{ eligible_count }} Stimmrechte ·
+            Summe Stimmgewicht {{ '%g'|format(total_weight) }}
+        </p>
+    </div>
+    <div class="d-flex gap-2">
+        <a class="btn btn-sm btn-outline-secondary"
+           href="{{ url_for('voting.admin_export_attendance', eid=election.id) }}">⬇ Präsenzliste</a>
+        <a class="btn btn-sm btn-outline-secondary"
+           href="{{ url_for('voting.admin_election', eid=election.id) }}">← Zurück</a>
+    </div>
+</div>
+
+<div class="alert alert-info small">
+    Ein Eintrag entspricht einem Stimmrecht – in der Regel einer Wohneinheit.
+    Wird eine Einheit durch eine bevollmächtigte Person vertreten, tragen Sie die
+    Vollmacht im Feld „Bevollmächtigt“ ein und hinterlegen als E-Mail-Adresse die
+    der bevollmächtigten Person. Das Stimmrecht selbst bleibt der Einheit zugeordnet.
+</div>
+
+{% if election.is_editable %}
+<div class="row g-3 mb-4">
+    <div class="col-lg-6">
+        <div class="card shadow-sm h-100">
+            <div class="card-header bg-white fw-semibold">Einzeln hinzufügen</div>
+            <div class="card-body">
+                <form method="post">
+                    <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+                    <input type="hidden" name="action" value="add">
+                    <div class="row g-2">
+                        <div class="col-md-6">
+                            <input class="form-control" name="name" placeholder="Name Eigentümer*in" required>
+                        </div>
+                        <div class="col-md-6">
+                            <input class="form-control" name="email" type="email" placeholder="E-Mail (optional)">
+                        </div>
+                        <div class="col-md-4">
+                            <input class="form-control" name="unit" placeholder="Einheit, z. B. A-12">
+                        </div>
+                        <div class="col-md-4">
+                            <input class="form-control" name="weight" placeholder="Stimmgewicht" value="1">
+                        </div>
+                        <div class="col-md-4">
+                            <input class="form-control" name="proxy_name" placeholder="Bevollmächtigt (optional)">
+                        </div>
+                        <div class="col-12">
+                            <input class="form-control" name="note" placeholder="Bemerkung (optional)">
+                        </div>
+                    </div>
+                    <button class="btn btn-primary btn-sm mt-3">Hinzufügen</button>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-lg-6">
+        <div class="card shadow-sm h-100">
+            <div class="card-header bg-white fw-semibold">Liste importieren</div>
+            <div class="card-body">
+                <form method="post">
+                    <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+                    <input type="hidden" name="action" value="import">
+                    <textarea class="form-control font-monospace" name="import_text" rows="6"
+                              placeholder="Name;E-Mail;Einheit;Stimmgewicht&#10;Maria López;maria@example.com;A-12;3,45&#10;Hans Meier;hans@example.com;B-04;2,80"></textarea>
+                    <div class="form-text">
+                        Eine Zeile je Stimmrecht, getrennt durch Semikolon, Komma oder Tabulator.
+                        Direkt aus Excel kopierbar. Eine Kopfzeile wird erkannt.
+                    </div>
+                    <div class="form-check mt-2">
+                        <input class="form-check-input" type="checkbox" name="replace" id="replace">
+                        <label class="form-check-label small" for="replace">
+                            Bestehendes Stimmregister vorher leeren
+                        </label>
+                    </div>
+                    <button class="btn btn-primary btn-sm mt-2">Importieren</button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+<div class="card shadow-sm mb-5">
+    <div class="table-responsive">
+        <table class="table table-sm mb-0 align-middle">
+            <thead>
+                <tr>
+                    <th>Einheit</th>
+                    <th>Name</th>
+                    <th>E-Mail</th>
+                    <th class="text-end">Gewicht</th>
+                    <th>Status</th>
+                    <th class="text-end">Aktionen</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for voter in voters %}
+                <tr class="{% if not voter.eligible %}table-secondary{% endif %}">
+                    <td>{{ voter.unit }}</td>
+                    <td>
+                        {{ voter.name }}
+                        {% if voter.proxy_name %}
+                        <div class="small text-muted">Vollmacht: {{ voter.proxy_name }}</div>
+                        {% endif %}
+                        {% if voter.note %}<div class="small text-muted">{{ voter.note }}</div>{% endif %}
+                    </td>
+                    <td class="small">{{ voter.email or '– Postversand' }}</td>
+                    <td class="text-end">{{ '%g'|format(voter.weight) }}</td>
+                    <td>
+                        {% if not voter.eligible %}<span class="badge bg-secondary">gesperrt</span>
+                        {% elif voter.voted %}
+                        <span class="badge bg-success">abgestimmt</span>
+                        <div class="small text-muted">{{ voter.voted_on.strftime('%d.%m.%Y') if voter.voted_on }}</div>
+                        {% elif voter.active_token %}<span class="badge bg-info text-dark">Code aktiv</span>
+                        {% else %}<span class="badge bg-light text-dark">kein Code</span>{% endif %}
+                    </td>
+                    <td class="text-end">
+                        <div class="btn-group btn-group-sm">
+                            <button class="btn btn-outline-secondary" data-bs-toggle="collapse"
+                                    data-bs-target="#edit{{ voter.id }}">✎</button>
+                            {% if election.status == 'open' and not voter.voted and voter.eligible %}
+                            <form method="post"
+                                  action="{{ url_for('voting.admin_voter_update', eid=election.id, vid=voter.id) }}"
+                                  onsubmit="return confirm('Neuen Zugangscode ausstellen? Der bisherige Code wird ungültig.');">
+                                <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+                                <input type="hidden" name="action" value="reissue">
+                                <input type="hidden" name="send" value="1">
+                                <button class="btn btn-outline-primary" title="Neuen Code ausstellen">🔑</button>
+                            </form>
+                            {% endif %}
+                            {% if not voter.voted %}
+                            <form method="post"
+                                  action="{{ url_for('voting.admin_voter_update', eid=election.id, vid=voter.id) }}"
+                                  onsubmit="return confirm('Eintrag löschen?');">
+                                <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+                                <input type="hidden" name="action" value="delete">
+                                <button class="btn btn-outline-danger">✕</button>
+                            </form>
+                            {% endif %}
+                        </div>
+                    </td>
+                </tr>
+                <tr class="collapse" id="edit{{ voter.id }}">
+                    <td colspan="6" class="bg-light">
+                        <form method="post"
+                              action="{{ url_for('voting.admin_voter_update', eid=election.id, vid=voter.id) }}"
+                              class="row g-2">
+                            <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+                            <input type="hidden" name="action" value="edit">
+                            <div class="col-md-3"><input class="form-control form-control-sm" name="name"
+                                   value="{{ voter.name }}" placeholder="Name"></div>
+                            <div class="col-md-3"><input class="form-control form-control-sm" name="email"
+                                   value="{{ voter.email }}" placeholder="E-Mail"></div>
+                            <div class="col-md-2"><input class="form-control form-control-sm" name="unit"
+                                   value="{{ voter.unit }}" placeholder="Einheit"></div>
+                            <div class="col-md-2"><input class="form-control form-control-sm" name="weight"
+                                   value="{{ '%g'|format(voter.weight) }}" placeholder="Gewicht"></div>
+                            <div class="col-md-2"><input class="form-control form-control-sm" name="proxy_name"
+                                   value="{{ voter.proxy_name }}" placeholder="Vollmacht"></div>
+                            <div class="col-md-8"><input class="form-control form-control-sm" name="note"
+                                   value="{{ voter.note }}" placeholder="Bemerkung"></div>
+                            <div class="col-md-4">
+                                <button class="btn btn-sm btn-primary">Speichern</button>
+                            </div>
+                        </form>
+                        {% if not voter.voted %}
+                        <form method="post" class="mt-2"
+                              action="{{ url_for('voting.admin_voter_update', eid=election.id, vid=voter.id) }}">
+                            <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+                            <input type="hidden" name="action" value="toggle_eligible">
+                            <button class="btn btn-sm btn-outline-secondary">
+                                {{ 'Stimmrecht sperren' if voter.eligible else 'Stimmrecht freigeben' }}
+                            </button>
+                        </form>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+                {% if not voters %}
+                <tr><td colspan="6" class="text-center text-muted py-4">Stimmregister ist leer.</td></tr>
+                {% endif %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}

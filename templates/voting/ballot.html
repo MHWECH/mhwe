@@ -1,0 +1,100 @@
+{% extends 'base.html' %}
+{% block title %}{{ election.title }}{% endblock %}
+{% block extra_head %}
+<meta name="referrer" content="no-referrer">
+<meta name="robots" content="noindex, nofollow">
+{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-lg-8 col-md-10">
+
+        <div class="card shadow-sm mb-3">
+            <div class="card-body p-4 p-md-5">
+                <h1 class="h3 mb-2">🗳 {{ election.title }}</h1>
+                {% if election.description %}
+                <p class="text-muted" style="white-space: pre-line">{{ election.description }}</p>
+                {% endif %}
+
+                <div class="row g-2 small text-muted border-top pt-3 mt-3">
+                    <div class="col-sm-6">
+                        <strong>Stimmrecht:</strong> {{ voter.name }}
+                        {% if voter.unit %}<br>Einheit {{ voter.unit }}{% endif %}
+                        {% if voter.proxy_name %}<br>vertreten durch {{ voter.proxy_name }}{% endif %}
+                    </div>
+                    <div class="col-sm-6">
+                        {% if election.weighted %}
+                        <strong>Stimmgewicht:</strong> {{ '%g'|format(voter.weight) }}<br>
+                        {% endif %}
+                        {% if election.closes_at %}
+                        <strong>Frist:</strong> {{ fmt_local(election.closes_at, election) }}
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        {% if errors %}
+        <div class="alert alert-danger">
+            Bitte beantworten Sie alle Beschlussanträge, bevor Sie den Stimmzettel abgeben.
+        </div>
+        {% endif %}
+
+        <form method="post" novalidate>
+            <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+
+            {% for question in questions %}
+            <div class="card shadow-sm mb-3 {% if question.id in errors %}border-danger{% endif %}">
+                <div class="card-body p-4">
+                    <div class="text-muted small text-uppercase mb-1">
+                        Beschlussantrag {{ loop.index }} von {{ questions|length }}
+                    </div>
+                    <h2 class="h5 mb-2">{{ question.text }}</h2>
+                    {% if question.description %}
+                    <p class="text-muted small" style="white-space: pre-line">{{ question.description }}</p>
+                    {% endif %}
+
+                    <div class="mt-3">
+                        {% for opt in question.options %}
+                        <div class="form-check py-1">
+                            <input class="form-check-input"
+                                   type="{{ 'checkbox' if question.qtype == 'mehrfachauswahl' else 'radio' }}"
+                                   name="q_{{ question.id }}" id="q{{ question.id }}_{{ loop.index }}"
+                                   value="{{ opt.value }}"
+                                   {% if opt.value in (form.getlist('q_' ~ question.id) or []) %}checked{% endif %}>
+                            <label class="form-check-label" for="q{{ question.id }}_{{ loop.index }}">
+                                {{ opt.label }}
+                            </label>
+                        </div>
+                        {% endfor %}
+                    </div>
+
+                    <div class="form-text mt-2">
+                        Erforderlich: {{ question.majority_label }}
+                    </div>
+                </div>
+            </div>
+            {% endfor %}
+
+            <div class="card shadow-sm">
+                <div class="card-body p-4">
+                    <div class="alert alert-info small mb-3">
+                        <strong>Ihre Stimme ist geheim.</strong> Beim Absenden wird Ihr
+                        Zugangscode entwertet und Ihr Stimmzettel getrennt davon in der
+                        Urne abgelegt – ohne jede Verbindung zu Ihrem Namen. Sie erhalten
+                        anschliessend einen Quittungscode, mit dem Sie selbst prüfen
+                        können, dass Ihre Stimme gezählt wurde.
+                        <br><br>
+                        <strong>Eine Änderung ist danach nicht mehr möglich.</strong>
+                    </div>
+                    <div class="d-grid">
+                        <button type="submit" class="btn btn-primary btn-lg">
+                            Stimmzettel verbindlich abgeben
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}

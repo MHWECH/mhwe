@@ -1,3 +1,6 @@
 Flask>=3.0.0
 Flask-SQLAlchemy>=3.1.0
 Werkzeug>=3.0.0
+# Zeitzonendatenbank für die Abstimmungsfristen (auf Systemen ohne eigene
+# tz-Datenbank, z. B. Windows und schlanke Container, zwingend erforderlich)
+tzdata>=2024.1
