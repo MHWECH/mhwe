@@ -1,0 +1,162 @@
+{% extends 'admin/base.html' %}
+{% block title %}Beschlussanträge{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+    <div>
+        <h1 class="h3 mb-1">Beschlussanträge</h1>
+        <p class="text-muted mb-0">{{ election.title }}</p>
+    </div>
+    <a class="btn btn-sm btn-outline-secondary"
+       href="{{ url_for('voting.admin_election', eid=election.id) }}">← Zurück</a>
+</div>
+
+{% if not election.is_editable %}
+<div class="alert alert-warning">
+    Die Abstimmung wurde bereits eröffnet. Die Anträge sind aus Beweisgründen
+    gesperrt und können nicht mehr geändert werden.
+</div>
+{% endif %}
+
+<form method="post" id="questionForm">
+    <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+    <input type="hidden" name="questions_json" id="questions_json">
+
+    <div id="questions"></div>
+
+    {% if election.is_editable %}
+    <div class="d-flex gap-2 mb-4 flex-wrap">
+        <button type="button" class="btn btn-outline-primary" onclick="addQuestion('janein')">
+            + Ja/Nein-Antrag
+        </button>
+        <button type="button" class="btn btn-outline-primary" onclick="addQuestion('einzelauswahl')">
+            + Auswahl (eine Antwort)
+        </button>
+        <button type="button" class="btn btn-outline-primary" onclick="addQuestion('mehrfachauswahl')">
+            + Auswahl (mehrere Antworten)
+        </button>
+    </div>
+    <button class="btn btn-primary">Anträge speichern</button>
+    {% endif %}
+</form>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+const EDITABLE = {{ 'true' if election.is_editable else 'false' }};
+const MAJORITY_TYPES = {{ majority_types|tojson }};
+const MAJORITY_BASES = {{ majority_bases|tojson }};
+
+let questions = [
+    {% for q in election.questions %}
+    {
+        text: {{ q.text|tojson }},
+        description: {{ q.description|tojson }},
+        qtype: {{ q.qtype|tojson }},
+        majority_type: {{ q.majority_type|tojson }},
+        majority_base: {{ q.majority_base|tojson }},
+        options: {{ (q.options if q.qtype != 'janein' else [])|tojson }}
+    },
+    {% endfor %}
+];
+
+function esc(value) {
+    return String(value == null ? '' : value)
+        .replace(/&/g, '&amp;').replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+function selectHtml(options, selected, onchange) {
+    return Object.entries(options).map(([value, label]) =>
+        `<option value="${esc(value)}"${value === selected ? ' selected' : ''}>${esc(label)}</option>`
+    ).join('');
+}
+
+function render() {
+    const disabled = EDITABLE ? '' : ' disabled';
+    document.getElementById('questions').innerHTML = questions.map((q, i) => `
+      <div class="card shadow-sm mb-3 field-card">
+        <div class="card-body">
+          <div class="d-flex justify-content-between align-items-start mb-2">
+            <span class="text-muted small text-uppercase">Antrag ${i + 1} –
+              ${q.qtype === 'janein' ? 'Ja / Nein / Enthaltung'
+                : q.qtype === 'einzelauswahl' ? 'eine Antwort' : 'mehrere Antworten'}</span>
+            ${EDITABLE ? `<div class="btn-group btn-group-sm">
+              <button type="button" class="btn btn-outline-secondary" onclick="move(${i}, -1)">↑</button>
+              <button type="button" class="btn btn-outline-secondary" onclick="move(${i}, 1)">↓</button>
+              <button type="button" class="btn btn-outline-danger" onclick="removeQuestion(${i})">✕</button>
+            </div>` : ''}
+          </div>
+
+          <label class="form-label fw-semibold">Antragstext</label>
+          <textarea class="form-control mb-2" rows="2"${disabled}
+                    oninput="update(${i}, 'text', this.value)">${esc(q.text)}</textarea>
+
+          <label class="form-label fw-semibold">Erläuterung (optional)</label>
+          <textarea class="form-control mb-3" rows="2"${disabled}
+                    oninput="update(${i}, 'description', this.value)">${esc(q.description)}</textarea>
+
+          ${q.qtype === 'janein' ? `
+          <div class="row g-2">
+            <div class="col-md-6">
+              <label class="form-label fw-semibold">Erforderliche Mehrheit</label>
+              <select class="form-select"${disabled} onchange="update(${i}, 'majority_type', this.value)">
+                ${selectHtml(MAJORITY_TYPES, q.majority_type)}
+              </select>
+            </div>
+            <div class="col-md-6">
+              <label class="form-label fw-semibold">Bezugsgrösse</label>
+              <select class="form-select"${disabled} onchange="update(${i}, 'majority_base', this.value)">
+                ${selectHtml(MAJORITY_BASES, q.majority_base)}
+              </select>
+            </div>
+          </div>` : `
+          <label class="form-label fw-semibold">Antwortmöglichkeiten</label>
+          ${(q.options || []).map((opt, j) => `
+            <div class="input-group input-group-sm mb-1">
+              <input type="text" class="form-control" value="${esc(opt.label)}"${disabled}
+                     oninput="updateOption(${i}, ${j}, this.value)">
+              ${EDITABLE ? `<button type="button" class="btn btn-outline-danger"
+                     onclick="removeOption(${i}, ${j})">✕</button>` : ''}
+            </div>`).join('')}
+          ${EDITABLE ? `<button type="button" class="btn btn-sm btn-outline-secondary mt-1"
+                   onclick="addOption(${i})">+ Antwort</button>` : ''}`}
+        </div>
+      </div>`).join('') ||
+      '<div class="alert alert-info">Noch keine Anträge erfasst.</div>';
+}
+
+function addQuestion(qtype) {
+    questions.push({
+        text: '', description: '', qtype: qtype,
+        majority_type: 'einfach', majority_base: 'gueltige',
+        options: qtype === 'janein' ? [] : [{label: ''}, {label: ''}]
+    });
+    render();
+}
+function removeQuestion(i) { questions.splice(i, 1); render(); }
+function move(i, delta) {
+    const j = i + delta;
+    if (j < 0 || j >= questions.length) return;
+    [questions[i], questions[j]] = [questions[j], questions[i]];
+    render();
+}
+function update(i, key, value) { questions[i][key] = value; }
+function updateOption(i, j, value) { questions[i].options[j].label = value; }
+function addOption(i) { questions[i].options.push({label: ''}); render(); }
+function removeOption(i, j) { questions[i].options.splice(j, 1); render(); }
+
+document.getElementById('questionForm').addEventListener('submit', function () {
+    questions.forEach((q, i) => {
+        if (q.qtype !== 'janein') {
+            q.options = (q.options || [])
+                .filter(o => (o.label || '').trim())
+                .map((o, j) => ({label: o.label.trim(), value: 'opt' + (j + 1)}));
+        }
+    });
+    document.getElementById('questions_json').value = JSON.stringify(questions);
+});
+
+render();
+</script>
+{% endblock %}

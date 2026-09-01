@@ -1,0 +1,52 @@
+{% extends 'base.html' %}
+{% block title %}Stimme abgegeben{% endblock %}
+{% block extra_head %}<meta name="referrer" content="no-referrer">{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-lg-7 col-md-9">
+        <div class="card shadow-sm">
+            <div class="card-body p-4 p-md-5 text-center">
+                <div class="success-icon mb-4">✓</div>
+                <h1 class="h3 mb-3">Ihre Stimme wurde gezählt</h1>
+                {% if election %}
+                <p class="text-muted">{{ election.title }}</p>
+                {% endif %}
+
+                <p class="mt-4 mb-2 fw-semibold">Ihr Quittungscode</p>
+                <div class="display-6 font-monospace border rounded py-3 px-2 bg-light">
+                    {{ code }}
+                </div>
+
+                <p class="text-muted small mt-4 text-start">
+                    <strong>Bitte notieren oder ausdrucken Sie diesen Code.</strong>
+                    Er ist Ihr persönlicher Beleg. Nach der Veröffentlichung des
+                    Ergebnisses können Sie damit überprüfen, dass Ihr Stimmzettel
+                    unverändert in der Urne liegt. Der Code lässt keinen Rückschluss
+                    auf Ihre Person zu – geben Sie ihn nur weiter, wenn Sie Ihre
+                    Stimme offenlegen wollen.
+                </p>
+
+                <details class="text-start small text-muted mt-3">
+                    <summary>Technische Prüfsumme Ihres Stimmzettels</summary>
+                    <code class="d-block mt-2 text-break">{{ ballot_hash }}</code>
+                </details>
+
+                {% if election %}
+                <a href="{{ url_for('voting.public_verification', public_id=election.public_id) }}"
+                   class="btn btn-outline-primary mt-4">Zur Verifikationsseite</a>
+                {% endif %}
+                <button onclick="window.print()" class="btn btn-outline-secondary mt-4">Drucken</button>
+
+                <form method="post" action="{{ url_for('voting.receipt_close') }}" class="mt-4">
+                    <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+                    <button class="btn btn-link btn-sm text-muted"
+                            onclick="return confirm('Quittung schliessen? Der Code wird danach nicht mehr angezeigt.');">
+                        Quittung schliessen
+                    </button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

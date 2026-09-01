@@ -25,6 +25,13 @@
     </li>
     <hr class="my-2">
     <li class="nav-item">
+        <a class="nav-link {% if request.blueprint == 'voting' %}active{% endif %}"
+           href="{{ url_for('voting.admin_elections') }}">
+            🗳 Abstimmungen
+        </a>
+    </li>
+    <hr class="my-2">
+    <li class="nav-item">
         <a class="nav-link text-muted" href="{{ url_for('index') }}" target="_blank">
             🔗 Formular ansehen ↗
         </a>

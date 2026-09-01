@@ -1,0 +1,275 @@
+{% extends 'admin/base.html' %}
+{% block title %}{{ election.title }}{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-start mb-3 flex-wrap gap-2">
+    <div>
+        <h1 class="h3 mb-1">{{ election.title }}</h1>
+        <div>
+            {% if election.status == 'draft' %}<span class="badge bg-secondary">Entwurf</span>
+            {% elif election.status == 'open' %}<span class="badge bg-success">läuft</span>
+            {% elif election.status == 'closed' %}<span class="badge bg-warning text-dark">geschlossen</span>
+            {% else %}<span class="badge bg-primary">veröffentlicht</span>{% endif %}
+            <span class="text-muted small ms-2">
+                {{ eligible_count }} Stimmberechtigte · {{ voted_count }} abgestimmt · {{ ballots }} Stimmzettel
+            </span>
+        </div>
+    </div>
+    <div class="d-flex gap-2 flex-wrap">
+        <a class="btn btn-sm btn-outline-secondary"
+           href="{{ url_for('voting.admin_questions', eid=election.id) }}">Anträge</a>
+        <a class="btn btn-sm btn-outline-secondary"
+           href="{{ url_for('voting.admin_voters', eid=election.id) }}">Stimmregister</a>
+        {% if election.status != 'draft' %}
+        <a class="btn btn-sm btn-outline-secondary"
+           href="{{ url_for('voting.admin_results', eid=election.id) }}">Ergebnis</a>
+        {% endif %}
+        <a class="btn btn-sm btn-outline-secondary"
+           href="{{ url_for('voting.admin_audit', eid=election.id) }}">Protokoll</a>
+    </div>
+</div>
+
+{# ── Ablaufsteuerung ─────────────────────────────────────────────────────── #}
+<div class="card shadow-sm mb-4">
+    <div class="card-header bg-white fw-semibold">Ablauf</div>
+    <div class="card-body">
+        <ol class="mb-4 small text-muted">
+            <li class="{% if election.questions %}text-success{% endif %}">
+                Beschlussanträge erfassen ({{ election.questions|length }} erfasst)
+            </li>
+            <li class="{% if eligible_count %}text-success{% endif %}">
+                Stimmregister pflegen ({{ eligible_count }} Stimmrechte,
+                Summe Stimmgewicht {{ '%g'|format(eligible_weight) }})
+            </li>
+            <li class="{% if election.status != 'draft' %}text-success{% endif %}">
+                Abstimmung eröffnen – Zugangscodes werden erzeugt und versendet
+            </li>
+            <li class="{% if election.status in ('closed', 'published') %}text-success{% endif %}">
+                Abstimmung schliessen – Urne wird versiegelt
+            </li>
+            <li class="{% if election.status == 'published' %}text-success{% endif %}">
+                Ergebnis feststellen und veröffentlichen
+            </li>
+        </ol>
+
+        {% if election.status == 'draft' %}
+        <form method="post" action="{{ url_for('voting.admin_open', eid=election.id) }}"
+              onsubmit="return confirm('Abstimmung jetzt eröffnen? Anträge und Stimmregister können danach nicht mehr frei geändert werden.');">
+            <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+            <div class="form-check mb-2">
+                <input class="form-check-input" type="checkbox" name="send_mails" id="send_mails" checked>
+                <label class="form-check-label" for="send_mails">
+                    Stimmunterlagen sofort per E-Mail versenden
+                </label>
+            </div>
+            <button class="btn btn-success">▶ Abstimmung eröffnen</button>
+        </form>
+
+        {% elif election.status == 'open' %}
+        <div class="row g-3">
+            <div class="col-md-6">
+                <form method="post" action="{{ url_for('voting.admin_reissue', eid=election.id) }}"
+                      onsubmit="return confirm('Für alle noch nicht abgestimmten Stimmrechte werden NEUE Codes erzeugt. Die bisherigen Codes werden dadurch ungültig. Fortfahren?');">
+                    <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+                    <div class="form-check mb-2">
+                        <input class="form-check-input" type="checkbox" name="send_mails" id="remind_mails" checked>
+                        <label class="form-check-label" for="remind_mails">per E-Mail versenden</label>
+                    </div>
+                    <button class="btn btn-outline-primary btn-sm">↻ Erinnerung mit neuen Codes</button>
+                    <div class="form-text">
+                        Codes liegen nur als Hash vor und können nicht erneut angezeigt
+                        werden. Eine Erinnerung stellt daher zwingend neue Codes aus.
+                    </div>
+                </form>
+            </div>
+            <div class="col-md-6">
+                <form method="post" action="{{ url_for('voting.admin_close', eid=election.id) }}"
+                      onsubmit="return confirm('Abstimmung endgültig schliessen? Danach sind keine Stimmen mehr möglich.');">
+                    <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+                    <button class="btn btn-warning">■ Abstimmung schliessen</button>
+                </form>
+            </div>
+        </div>
+
+        {% elif election.status == 'closed' %}
+        <form method="post" action="{{ url_for('voting.admin_publish', eid=election.id) }}"
+              onsubmit="return confirm('Ergebnis veröffentlichen? Die Verifikationsseite wird damit öffentlich erreichbar.');">
+            <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+            <button class="btn btn-primary">📢 Ergebnis veröffentlichen</button>
+        </form>
+
+        {% else %}
+        <p class="mb-1 small text-muted">
+            Veröffentlicht am {{ fmt_local(election.published_at, election) }}.
+        </p>
+        <a class="btn btn-outline-primary btn-sm" target="_blank"
+           href="{{ url_for('voting.public_verification', public_id=election.public_id) }}">
+            Öffentliche Verifikationsseite ↗
+        </a>
+        {% endif %}
+    </div>
+</div>
+
+{# ── Zugangswege ─────────────────────────────────────────────────────────── #}
+{% if election.status != 'draft' %}
+<div class="card shadow-sm mb-4">
+    <div class="card-header bg-white fw-semibold">Zugang für Stimmberechtigte</div>
+    <div class="card-body small">
+        <p class="mb-1">Codeeingabe (für Unterlagen auf Papier):</p>
+        <code>{{ url_for('voting.vote_entry', _external=True) }}</code>
+        <p class="mb-1 mt-3">Öffentliche Verifikationsseite (nach Veröffentlichung):</p>
+        <code>{{ url_for('voting.public_verification', public_id=election.public_id, _external=True) }}</code>
+        <p class="text-muted mt-3 mb-0">
+            Falls die App hinter einem Proxy läuft, setzen Sie <code>BASE_URL</code>
+            in der <code>.env</code>, damit die Links in den E-Mails korrekt sind.
+        </p>
+    </div>
+</div>
+{% endif %}
+
+{# ── Einstellungen ───────────────────────────────────────────────────────── #}
+<form method="post">
+    <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+
+    <div class="card shadow-sm mb-4">
+        <div class="card-header bg-white fw-semibold">Rahmendaten</div>
+        <div class="card-body">
+            <div class="mb-3">
+                <label class="form-label fw-semibold">Titel</label>
+                <input type="text" class="form-control" name="title" value="{{ election.title }}">
+            </div>
+            <div class="mb-3">
+                <label class="form-label fw-semibold">Beschreibung / Einladungstext auf dem Stimmzettel</label>
+                <textarea class="form-control" name="description" rows="3">{{ election.description }}</textarea>
+            </div>
+            <div class="row g-3">
+                <div class="col-md-4">
+                    <label class="form-label fw-semibold">Zeitzone</label>
+                    <input type="text" class="form-control" name="timezone_name"
+                           value="{{ election.timezone_name }}" placeholder="Europe/Madrid">
+                    <div class="form-text">z. B. Europe/Madrid, Europe/Zurich, America/Santo_Domingo</div>
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label fw-semibold">Beginn der Stimmabgabe</label>
+                    <input type="datetime-local" class="form-control" name="opens_at"
+                           value="{{ to_input_value(election.opens_at, election) }}">
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label fw-semibold">Ende der Stimmabgabe</label>
+                    <input type="datetime-local" class="form-control" name="closes_at"
+                           value="{{ to_input_value(election.closes_at, election) }}">
+                    <div class="form-text">Nach Fristablauf schliesst die Urne automatisch.</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="card shadow-sm mb-4">
+        <div class="card-header bg-white fw-semibold">Stimmengewichtung und Beschlussfähigkeit</div>
+        <div class="card-body">
+            <div class="form-check mb-2">
+                <input class="form-check-input" type="checkbox" name="weighted" id="weighted"
+                       {% if election.weighted %}checked{% endif %}>
+                <label class="form-check-label" for="weighted">
+                    Nach Miteigentumsanteilen gewichten
+                    <span class="text-muted">(sonst gilt das Kopfprinzip: eine Einheit = eine Stimme)</span>
+                </label>
+            </div>
+            <div class="form-check mb-3">
+                <input class="form-check-input" type="checkbox" name="double_majority" id="double_majority"
+                       {% if election.double_majority %}checked{% endif %}>
+                <label class="form-check-label" for="double_majority">
+                    Doppelmehrheit verlangen (Mehrheit nach Köpfen <em>und</em> nach Anteilen)
+                </label>
+            </div>
+            <div class="row g-3">
+                <div class="col-md-6">
+                    <label class="form-label fw-semibold">Quorum nach Köpfen (%)</label>
+                    <input type="text" class="form-control" name="quorum_heads"
+                           value="{{ '%g'|format(election.quorum_heads or 0) }}">
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label fw-semibold">Quorum nach Anteilen (%)</label>
+                    <input type="text" class="form-control" name="quorum_weight"
+                           value="{{ '%g'|format(election.quorum_weight or 0) }}">
+                </div>
+            </div>
+            <div class="form-text mt-2">0 = kein Quorum. Die Beschlussfähigkeit wird im Ergebnis ausgewiesen.</div>
+        </div>
+    </div>
+
+    <div class="card shadow-sm mb-4">
+        <div class="card-header bg-white fw-semibold">Stimmgeheimnis und Verifizierbarkeit</div>
+        <div class="card-body">
+            <label class="form-label fw-semibold">Öffentliche Urnenliste</label>
+            {% for value, label in verification_modes.items() %}
+            <div class="form-check">
+                <input class="form-check-input" type="radio" name="verification_mode"
+                       id="vm_{{ value }}" value="{{ value }}"
+                       {% if election.verification_mode == value %}checked{% endif %}>
+                <label class="form-check-label" for="vm_{{ value }}">{{ label }}</label>
+            </div>
+            {% endfor %}
+
+            {% if election.weighted %}
+            <div class="alert alert-warning small mt-3 mb-3">
+                <strong>Wichtig bei gewichteter Abstimmung:</strong> Wenn die
+                Miteigentumsanteile je Einheit unterschiedlich sind, verrät ein
+                veröffentlichter Stimmzettel über sein Stimmgewicht die Einheit.
+                Verwenden Sie in diesem Fall <em>„Nur Quittungscodes“</em>. Die
+                vollständige Nachzählung bleibt über den CSV-Export für Beirat und
+                Rechnungsprüfung möglich.
+            </div>
+            {% endif %}
+
+            <div class="form-check mt-3">
+                <input class="form-check-input" type="checkbox" name="send_vote_confirmation"
+                       id="send_vote_confirmation" {% if election.send_vote_confirmation %}checked{% endif %}>
+                <label class="form-check-label" for="send_vote_confirmation">
+                    Nach der Stimmabgabe eine Bestätigungsmail senden
+                    <span class="text-muted">(ohne Quittungscode und ohne Stimme)</span>
+                </label>
+            </div>
+        </div>
+    </div>
+
+    <div class="card shadow-sm mb-4">
+        <div class="card-header bg-white fw-semibold">E-Mail mit den Stimmunterlagen</div>
+        <div class="card-body">
+            <div class="mb-3">
+                <label class="form-label fw-semibold">Betreff</label>
+                <input type="text" class="form-control" name="invitation_subject"
+                       value="{{ election.invitation_subject }}">
+            </div>
+            <div class="mb-2">
+                <label class="form-label fw-semibold">Text</label>
+                <textarea class="form-control font-monospace" name="invitation_body" rows="12"
+                          placeholder="Leer lassen für den Standardtext">{{ election.invitation_body }}</textarea>
+            </div>
+            <div class="form-text">
+                Platzhalter: <code>{name}</code> <code>{einheit}</code> <code>{gewicht}</code>
+                <code>{titel}</code> <code>{code}</code> <code>{link}</code> <code>{frist}</code>
+            </div>
+        </div>
+    </div>
+
+    <button class="btn btn-primary mb-4">Einstellungen speichern</button>
+</form>
+
+<div class="card border-danger shadow-sm mb-5">
+    <div class="card-header bg-white text-danger fw-semibold">Abstimmung löschen</div>
+    <div class="card-body">
+        <form method="post" action="{{ url_for('voting.admin_election_delete', eid=election.id) }}"
+              onsubmit="return confirm('Abstimmung mit allen Stimmen und dem Protokoll unwiderruflich löschen?');">
+            <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+            {% if election.status != 'draft' %}
+            <p class="small text-muted">
+                Diese Abstimmung wurde durchgeführt. Zur Bestätigung bitte den Titel exakt eingeben.
+            </p>
+            <input type="text" class="form-control mb-2" name="confirm" placeholder="{{ election.title }}">
+            {% endif %}
+            <button class="btn btn-outline-danger btn-sm">Unwiderruflich löschen</button>
+        </form>
+    </div>
+</div>
+{% endblock %}

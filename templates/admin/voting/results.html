@@ -1,0 +1,169 @@
+{% extends 'admin/base.html' %}
+{% block title %}Ergebnis{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+    <div>
+        <h1 class="h3 mb-1">Ergebnis</h1>
+        <p class="text-muted mb-0">{{ election.title }}</p>
+    </div>
+    <div class="d-flex gap-2 flex-wrap">
+        <a class="btn btn-sm btn-outline-secondary"
+           href="{{ url_for('voting.admin_export_ballots', eid=election.id) }}">⬇ Urnenliste</a>
+        <a class="btn btn-sm btn-outline-secondary"
+           href="{{ url_for('voting.admin_export_attendance', eid=election.id) }}">⬇ Präsenzliste</a>
+        <a class="btn btn-sm btn-outline-secondary"
+           href="{{ url_for('voting.admin_export_audit', eid=election.id) }}">⬇ Protokoll</a>
+        <a class="btn btn-sm btn-outline-secondary"
+           href="{{ url_for('voting.admin_election', eid=election.id) }}">← Zurück</a>
+    </div>
+</div>
+
+{% if live %}
+<div class="alert alert-warning">
+    <strong>Die Abstimmung läuft noch.</strong> Ein Zwischenstand ist zwar technisch
+    abrufbar, sollte aber nicht verbreitet werden – er kann das weitere
+    Stimmverhalten beeinflussen und die Anfechtbarkeit des Beschlusses erhöhen.
+</div>
+{% endif %}
+
+<div class="row g-3 mb-4">
+    <div class="col-6 col-lg-3">
+        <div class="card shadow-sm h-100"><div class="card-body text-center">
+            <div class="h3 mb-0">{{ results.cast_heads }} / {{ results.eligible_heads }}</div>
+            <small class="text-muted">Stimmen / Stimmberechtigte</small>
+        </div></div>
+    </div>
+    <div class="col-6 col-lg-3">
+        <div class="card shadow-sm h-100"><div class="card-body text-center">
+            <div class="h3 mb-0">{{ '%.1f'|format(results.turnout_heads) }} %</div>
+            <small class="text-muted">Beteiligung nach Köpfen</small>
+        </div></div>
+    </div>
+    <div class="col-6 col-lg-3">
+        <div class="card shadow-sm h-100"><div class="card-body text-center">
+            <div class="h3 mb-0">{{ '%.1f'|format(results.turnout_weight) }} %</div>
+            <small class="text-muted">Beteiligung nach Anteilen</small>
+        </div></div>
+    </div>
+    <div class="col-6 col-lg-3">
+        <div class="card shadow-sm h-100"><div class="card-body text-center">
+            <div class="h3 mb-0">{{ '%g'|format(results.cast_weight) }}</div>
+            <small class="text-muted">abgegebenes Stimmgewicht<br>von {{ '%g'|format(results.eligible_weight) }}</small>
+        </div></div>
+    </div>
+</div>
+
+<div class="card shadow-sm mb-4">
+    <div class="card-header bg-white fw-semibold">Beschlussfähigkeit und Integrität</div>
+    <div class="card-body">
+        <ul class="list-unstyled mb-0 small">
+            <li class="mb-2">
+                {% if results.quorum_ok %}✅{% else %}⚠️{% endif %}
+                Quorum: erforderlich {{ '%g'|format(election.quorum_heads or 0) }} % nach Köpfen /
+                {{ '%g'|format(election.quorum_weight or 0) }} % nach Anteilen –
+                {{ 'erreicht' if results.quorum_ok else 'NICHT erreicht' }}
+            </li>
+            <li class="mb-2">
+                {% if chain_ok %}✅ Protokollkette unversehrt (keine nachträglichen Änderungen erkennbar)
+                {% else %}❌ <strong>Protokollkette gebrochen ab Eintrag Nr. {{ chain_error + 1 }}</strong>
+                – das Protokoll wurde nachträglich verändert.{% endif %}
+            </li>
+            <li class="mb-2">
+                {% if fingerprint_ok %}✅ Urnen-Fingerabdruck stimmt mit dem beim Schliessen
+                festgehaltenen Wert überein
+                {% else %}❌ <strong>Urnen-Fingerabdruck weicht ab</strong> – die Urne wurde nach
+                dem Schliessen verändert.{% endif %}
+            </li>
+            <li>
+                <span class="text-muted">Fingerabdruck:</span>
+                <code class="text-break">{{ results.fingerprint }}</code>
+            </li>
+        </ul>
+    </div>
+</div>
+
+{% for item in results.questions %}
+<div class="card shadow-sm mb-3">
+    <div class="card-body">
+        <div class="text-muted small text-uppercase">Beschlussantrag {{ loop.index }}</div>
+        <h2 class="h5">{{ item.question.text }}</h2>
+        <p class="small text-muted mb-3">Erforderlich: {{ item.question.majority_label }}</p>
+
+        <div class="table-responsive">
+            <table class="table table-sm mb-0">
+                <thead>
+                    <tr>
+                        <th>Antwort</th>
+                        <th class="text-end">Köpfe</th>
+                        <th class="text-end">%</th>
+                        <th class="text-end">Anteile</th>
+                        <th class="text-end">%</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for opt in item.question.options %}
+                    <tr>
+                        <td>{{ opt.label }}</td>
+                        <td class="text-end">{{ item.tallies[opt.value].heads }}</td>
+                        <td class="text-end text-muted">
+                            {{ '%.1f'|format(item.tallies[opt.value].heads / results.cast_heads * 100)
+                               if results.cast_heads else '0.0' }}
+                        </td>
+                        <td class="text-end">{{ '%g'|format(item.tallies[opt.value].weight) }}</td>
+                        <td class="text-end text-muted">
+                            {{ '%.1f'|format(item.tallies[opt.value].weight / results.cast_weight * 100)
+                               if results.cast_weight else '0.0' }}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                    {% if item.invalid.heads %}
+                    <tr class="text-muted">
+                        <td>ungültig / ohne Angabe</td>
+                        <td class="text-end">{{ item.invalid.heads }}</td>
+                        <td></td>
+                        <td class="text-end">{{ '%g'|format(item.invalid.weight) }}</td>
+                        <td></td>
+                    </tr>
+                    {% endif %}
+                </tbody>
+            </table>
+        </div>
+
+        {% if item.evaluation %}
+        {% set decisive = item.evaluation.weight if election.weighted else item.evaluation.heads %}
+        {% set passed = (item.evaluation.heads.angenommen and item.evaluation.weight.angenommen)
+                        if election.double_majority else decisive.angenommen %}
+        <div class="alert {{ 'alert-success' if passed and results.quorum_ok else 'alert-secondary' }} mt-3 mb-0">
+            <strong>{{ 'Antrag angenommen' if passed else 'Antrag abgelehnt' }}</strong>
+            <div class="small mt-1">
+                Nach Köpfen: {{ item.evaluation.heads.ja }} Ja / {{ item.evaluation.heads.nein }} Nein /
+                {{ item.evaluation.heads.enthaltung }} Enthaltung –
+                Bezugsgrösse {{ '%g'|format(item.evaluation.heads.basis) }} →
+                {{ 'angenommen' if item.evaluation.heads.angenommen else 'abgelehnt' }}<br>
+                Nach Anteilen: {{ '%g'|format(item.evaluation.weight.ja) }} Ja /
+                {{ '%g'|format(item.evaluation.weight.nein) }} Nein /
+                {{ '%g'|format(item.evaluation.weight.enthaltung) }} Enthaltung –
+                Bezugsgrösse {{ '%g'|format(item.evaluation.weight.basis) }} →
+                {{ 'angenommen' if item.evaluation.weight.angenommen else 'abgelehnt' }}
+                {% if election.double_majority %}<br><em>Doppelmehrheit erforderlich.</em>{% endif %}
+                {% if not results.quorum_ok %}<br><strong>Achtung: Quorum nicht erreicht.</strong>{% endif %}
+            </div>
+        </div>
+        {% endif %}
+    </div>
+</div>
+{% endfor %}
+
+{% if election.status == 'closed' %}
+<form method="post" action="{{ url_for('voting.admin_publish', eid=election.id) }}" class="mb-5">
+    <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+    <button class="btn btn-primary">📢 Ergebnis veröffentlichen</button>
+</form>
+{% elif election.status == 'published' %}
+<a class="btn btn-outline-primary mb-5" target="_blank"
+   href="{{ url_for('voting.public_verification', public_id=election.public_id) }}">
+    Öffentliche Verifikationsseite ansehen ↗
+</a>
+{% endif %}
+{% endblock %}

@@ -1,0 +1,74 @@
+{% extends 'admin/base.html' %}
+{% block title %}Zugangscodes{% endblock %}
+
+{% block content %}
+<h1 class="h3 mb-1">{{ headline }}</h1>
+<p class="text-muted">{{ election.title }}</p>
+
+<div class="alert alert-danger">
+    <strong>Diese Codes werden nur ein einziges Mal angezeigt.</strong>
+    Sie sind in der Datenbank ausschliesslich als Hash gespeichert und können
+    nicht wiederhergestellt werden. Bitte jetzt herunterladen oder ausdrucken –
+    für alle Stimmberechtigten ohne E-Mail-Adresse werden sie zum Postversand benötigt.
+    {% if sent %}<br><br>✉ {{ sent }} Einladung(en) wurden bereits per E-Mail versendet.{% endif %}
+</div>
+
+<div class="mb-3 d-flex gap-2 flex-wrap">
+    <button class="btn btn-primary" onclick="downloadCsv()">⬇ Als CSV herunterladen</button>
+    <button class="btn btn-outline-secondary" onclick="window.print()">🖨 Drucken</button>
+    <a class="btn btn-outline-secondary" href="{{ url_for('voting.admin_election', eid=election.id) }}">
+        Fertig – zur Abstimmung
+    </a>
+</div>
+
+<div class="card shadow-sm">
+    <div class="table-responsive">
+        <table class="table table-sm mb-0" id="codeTable">
+            <thead>
+                <tr>
+                    <th>Einheit</th>
+                    <th>Name</th>
+                    <th>E-Mail</th>
+                    <th>Zugangscode</th>
+                    <th>Direktlink</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for voter, code in issued %}
+                <tr>
+                    <td>{{ voter.unit }}</td>
+                    <td>{{ voter.name }}</td>
+                    <td class="small">{{ voter.email or '– (Postversand)' }}</td>
+                    <td class="font-monospace">{{ code }}</td>
+                    <td class="small text-break">{{ vote_link(code) }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+const rows = [
+    {% for voter, code in issued %}
+    [{{ voter.unit|tojson }}, {{ voter.name|tojson }}, {{ voter.email|tojson }},
+     {{ code|tojson }}, {{ vote_link(code)|tojson }}],
+    {% endfor %}
+];
+function downloadCsv() {
+    const header = ['Einheit', 'Name', 'E-Mail', 'Zugangscode', 'Link'];
+    const esc = v => '"' + String(v).replace(/"/g, '""') + '"';
+    const csv = '﻿' + [header, ...rows].map(r => r.map(esc).join(';')).join('\r\n');
+    const url = URL.createObjectURL(new Blob([csv], {type: 'text/csv;charset=utf-8'}));
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'zugangscodes_{{ election.public_id }}.csv';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+}
+</script>
+{% endblock %}

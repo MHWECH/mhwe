@@ -3,7 +3,7 @@ from flask import (Flask, render_template, request, redirect, url_for,
 from flask_sqlalchemy import SQLAlchemy
 from werkzeug.security import generate_password_hash, check_password_hash
 from functools import wraps
-from datetime import datetime
+from datetime import datetime, timedelta
 import json, csv, io, smtplib, os, secrets
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
@@ -31,6 +31,14 @@ app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', _get_or_create_secret_ke
 app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get(
     'DATABASE_URL', f'sqlite:///{os.path.join(INSTANCE_DIR, "formapp.db")}')
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+# Basis-URL für Links in E-Mails (z. B. https://abstimmung.villas-tropimar.com)
+app.config['BASE_URL'] = os.environ.get('BASE_URL', '').rstrip('/')
+# Sicherheitsflags für das Sitzungscookie
+app.config['SESSION_COOKIE_HTTPONLY'] = True
+app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
+app.config['SESSION_COOKIE_SECURE'] = (
+    os.environ.get('SESSION_COOKIE_SECURE', 'false').lower() == 'true')
+app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(hours=12)
 
 db = SQLAlchemy(app)
 
@@ -497,6 +505,14 @@ def init_db():
     if not MailConfig.query.first():
         db.session.add(MailConfig())
     db.session.commit()
+
+
+# ─── Abstimmungsmodul ────────────────────────────────────────────────────────
+# Import bewusst am Dateiende: voting.py greift auf `app` und `db` zu, dadurch
+# wird ein Zirkelimport vermieden.
+from voting import voting_bp  # noqa: E402
+
+app.register_blueprint(voting_bp)
 
 
 if __name__ == '__main__':
