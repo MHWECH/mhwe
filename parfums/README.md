@@ -19,7 +19,7 @@ Wichtig: Die Seite braucht einen Webserver. Ein Doppelklick auf
 ## Aufbau
 
 ```
-parfum-website/
+parfums/
 ├── index.html              Seitengeruest
 ├── css/style.css           Gestaltung (dunkel, Gold-Akzente)
 ├── js/app.js               Laden, Suche, Filter, Detailansicht
@@ -67,5 +67,8 @@ das gehoert selbst ergaenzt.
 
 ## Veroeffentlichen
 
-Den kompletten Ordner `parfum-website/` auf den Webspace kopieren. Es
-laeuft alles statisch, es braucht kein PHP und kein Python auf dem Server.
+Zieladresse: **https://mhwe.services/parfums**
+
+Alle Pfade in der Seite sind relativ, sie laeuft daher unter jedem
+Unterpfad ohne Anpassung. Die konkreten Schritte je nach Hosting stehen
+in **[DEPLOY.md](DEPLOY.md)**.
