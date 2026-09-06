@@ -1,128 +1,141 @@
 # Veroeffentlichen auf mhwe.services/parfums
 
-Die Seite ist rein statisch. Sie braucht **kein PHP, kein Python und keine
-Datenbank** auf dem Server — nur einen Ort, an dem Dateien liegen duerfen.
-
-Alle Pfade in der Seite sind relativ (`css/style.css`, `data/parfums.json`,
-`assets/img/...`). Deshalb laeuft sie unter jedem Unterpfad, ohne dass
-etwas angepasst werden muss.
-
-Der Ordner heisst `parfums/` — genau so, wie die Adresse spaeter lautet.
-Ordner hochladen, fertig.
+Die Seite ist rein statisch und braucht **kein PHP, kein Python und keine
+Datenbank**. Alle Pfade sind relativ, sie laeuft daher unter jedem
+Unterpfad, ohne dass am Code etwas geaendert werden muss.
 
 ---
 
-## Variante A — Klassisches Webspace (FTP/SFTP)
+## Firebase Hosting
 
-Der haeufigste Fall bei Schweizer Anbietern (Hostpoint, Infomaniak, Cyon,
-Metanet).
+### Das Wichtigste zuerst
 
-1. Mit dem FTP-Programm (z.B. FileZilla, Cyberduck) auf den Webspace
-   verbinden.
-2. In das Verzeichnis wechseln, in dem `index.html` der Hauptseite liegt.
-   Es heisst je nach Anbieter `public_html`, `httpdocs`, `www` oder `web`.
-3. Den kompletten Ordner **`parfums`** dort hineinziehen.
+Firebase Hosting **ersetzt bei jedem Deploy die gesamte Seite** durch den
+Inhalt des Ordners `public/`. Es gibt kein "nur diesen Unterordner
+hochladen".
 
-Ergebnis:
+Und: Firebase kann `/parfums` **nicht** auf eine andere Hosting-Site
+umleiten. Rewrites koennen nur auf einen Pfad, eine Cloud Function oder
+Cloud Run zeigen — nicht auf eine zweite Hosting-Site.
 
-```
-public_html/
-├── index.html          ← bestehende Hauptseite, bleibt unberuehrt
-└── parfums/            ← neu
-    ├── index.html
-    ├── css/  js/  data/
-    └── assets/img/
-```
+Daraus folgt: Die Duftsammlung muss zusammen mit der bestehenden
+Startseite in **einem** Deploy ausgeliefert werden.
 
-Aufrufbar unter `https://mhwe.services/parfums`.
+Davor schuetzt `build.sh` — es bricht ab, wenn die Startseite fehlt.
 
-Bei Aenderungen an `data/parfums.json` oder neuen Fotos: nur die
-geaenderten Dateien nochmal hochladen.
-
----
-
-## Variante B — GitHub Pages
-
-Im Repository liegt bereits ein fertiger Workflow:
-`.github/workflows/pages.yml`.
-
-Er ist absichtlich **nicht automatisch aktiv**, damit er nicht ins Leere
-laeuft, solange Pages nicht eingerichtet ist.
-
-So wird er scharf geschaltet:
-
-1. Auf GitHub unter *Settings → Pages* als Quelle **GitHub Actions**
-   waehlen.
-2. Unter *Settings → Pages → Custom domain* `mhwe.services` eintragen.
-3. Beim DNS-Anbieter der Domain einen `CNAME`-Eintrag auf
-   `mhwech.github.io` setzen (bzw. die `A`-Records von GitHub, wenn es
-   die Hauptdomain ohne `www` ist).
-4. Den Workflow einmal von Hand starten: *Actions → Deploy parfums to
-   GitHub Pages → Run workflow*.
-
-Damit er kuenftig bei jedem Push automatisch laeuft, in
-`.github/workflows/pages.yml` den auskommentierten `push:`-Block wieder
-aktivieren.
-
-Achtung: GitHub Pages uebernimmt dann die **ganze** Domain, nicht nur den
-Unterpfad. Das passt nur, wenn mhwe.services ohnehin dort liegt.
-
----
-
-## Variante C — Eigener Server (nginx)
-
-Ordner nach `/var/www/mhwe/parfums/` kopieren, z.B. mit:
+### Einmalige Einrichtung
 
 ```bash
-rsync -av --delete parfums/ user@server:/var/www/mhwe/parfums/
+npm install -g firebase-tools
+firebase login
+firebase projects:list          # zeigt die Projekt-ID
 ```
 
-Dann in der Server-Konfiguration ergaenzen:
+Die Projekt-ID in `.firebaserc` eintragen, anstelle von
+`HIER-FIREBASE-PROJEKT-ID-EINTRAGEN`.
+
+### Fall A — mhwe.services wird aus diesem Repository deployt
+
+Die Dateien der heutigen Startseite in den Ordner `site/` legen:
+
+```
+mhwe/
+├── site/               ← bestehende Startseite (index.html usw.)
+├── parfums/            ← die Duftsammlung
+├── firebase.json
+└── build.sh, deploy.sh
+```
+
+Dann:
+
+```bash
+./deploy.sh
+```
+
+Das Skript baut daraus:
+
+```
+public/
+├── index.html          → mhwe.services/
+└── parfums/            → mhwe.services/parfums
+```
+
+und deployt. `site/` und `public/` sind in `.gitignore` — die bestehende
+Startseite landet also nicht mit im Repository.
+
+### Fall B — mhwe.services wird woanders deployt
+
+Der einfachere Weg, wenn die Startseite schon ein eigenes Firebase-Projekt
+oder -Verzeichnis hat:
+
+```bash
+cp -r parfums /pfad/zum/anderen/projekt/public/parfums
+cd /pfad/zum/anderen/projekt
+firebase deploy --only hosting
+```
+
+Dort ist `parfums/` dann Teil des normalen Deploys. `firebase.json`,
+`build.sh` und `deploy.sh` aus diesem Repository werden nicht gebraucht.
+
+Die Cache-Regeln aus `firebase.json` lohnt es sich zu uebernehmen:
+
+```json
+"headers": [
+  { "source": "/parfums/data/**",
+    "headers": [{ "key": "Cache-Control", "value": "no-cache" }] },
+  { "source": "/parfums/assets/**",
+    "headers": [{ "key": "Cache-Control", "value": "public, max-age=604800" }] }
+]
+```
+
+`no-cache` fuer `data/` sorgt dafuer, dass Aenderungen an der Sammlung
+sofort sichtbar sind. Die Fotos werden eine Woche zwischengespeichert.
+
+### Vorher anschauen, ohne zu veroeffentlichen
+
+```bash
+./build.sh
+npx firebase-tools emulators:start --only hosting
+```
+
+Zeigt die Seite genau so, wie sie live aussehen wird — ohne dass etwas
+veroeffentlicht wird.
+
+### Domain
+
+Ist `mhwe.services` bereits mit dem Projekt verbunden (Firebase-Konsole →
+*Hosting* → *Benutzerdefinierte Domain*), ist nach dem Deploy nichts
+weiter zu tun. Die Sammlung ist dann unter
+`https://mhwe.services/parfums` erreichbar.
+
+---
+
+## Andere Hostings
+
+Falls die Seite doch woanders liegt — der Ordner `parfums/` funktioniert
+ueberall gleich.
+
+**Klassisches Webspace (FTP/SFTP):** Ordner `parfums` in das Verzeichnis
+mit der bestehenden `index.html` ziehen (`public_html`, `httpdocs` oder
+`www`). Fertig.
+
+**Eigener nginx-Server:**
 
 ```nginx
 location /parfums/ {
     alias /var/www/mhwe/parfums/;
     try_files $uri $uri/ /parfums/index.html;
 }
-
-# Ohne Schraegstrich am Ende sauber weiterleiten
-location = /parfums {
-    return 301 /parfums/;
-}
+location = /parfums { return 301 /parfums/; }
 ```
 
-Danach `sudo nginx -t && sudo systemctl reload nginx`.
-
-Bei Apache genuegt es meist, den Ordner ins DocumentRoot zu legen — es
-braucht keine eigene Konfiguration.
+**GitHub Pages:** Der Workflow `.github/workflows/pages.yml` liegt bereit,
+absichtlich nur von Hand startbar. Achtung: Pages uebernimmt dann die
+ganze Domain, nicht nur den Unterpfad.
 
 ---
 
-## Variante D — Netlify / Vercel
-
-Der Ordner wird als Unterpfad mit ausgeliefert, wenn er im
-veroeffentlichten Verzeichnis liegt.
-
-**Netlify** — `netlify.toml` im Repository-Wurzelverzeichnis:
-
-```toml
-[build]
-  publish = "."
-  command = ""
-```
-
-**Vercel** — `vercel.json`:
-
-```json
-{ "cleanUrls": true }
-```
-
-In beiden Faellen die Domain `mhwe.services` im Projekt hinterlegen. Der
-Ordner `parfums/` ist dann automatisch unter `/parfums` erreichbar.
-
----
-
-## Vorher lokal anschauen
+## Lokal anschauen
 
 ```bash
 cd parfums
@@ -141,6 +154,6 @@ In `index.html` steht:
 
 Damit taucht die Sammlung **nicht** in Google auf — wer die Adresse hat,
 sieht sie trotzdem. Ein echter Schutz ist das nicht; dafuer braeuchte es
-ein Passwort (bei den meisten Hostings per `.htaccess` einrichtbar).
+ein Passwort (bei Firebase ueber Cloud Functions oder Firebase Auth).
 
 Soll die Seite gefunden werden: die Zeile einfach loeschen.

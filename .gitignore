@@ -8,3 +8,9 @@ dist/
 build/
 .venv/
 venv/
+
+# Firebase Hosting
+public/
+site/
+.firebase/
+firebase-debug.log

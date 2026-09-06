@@ -70,5 +70,6 @@ das gehoert selbst ergaenzt.
 Zieladresse: **https://mhwe.services/parfums**
 
 Alle Pfade in der Seite sind relativ, sie laeuft daher unter jedem
-Unterpfad ohne Anpassung. Die konkreten Schritte je nach Hosting stehen
-in **[DEPLOY.md](DEPLOY.md)**.
+Unterpfad ohne Anpassung. Ausgeliefert wird ueber **Firebase Hosting**. Die Schritte stehen in
+**[DEPLOY.md](DEPLOY.md)** — dort auch der Grund, warum `build.sh`
+abbricht, wenn die bestehende Startseite fehlt.
