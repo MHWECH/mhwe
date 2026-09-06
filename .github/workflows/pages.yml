@@ -1,0 +1,54 @@
+# Veroeffentlicht den Ordner parfums/ auf GitHub Pages.
+#
+# Absichtlich NUR manuell startbar, damit der Workflow nicht fehlschlaegt,
+# solange GitHub Pages nicht eingerichtet ist. Einrichtung: siehe
+# parfums/DEPLOY.md, Variante B.
+#
+# Fuer automatische Veroeffentlichung bei jedem Push den push-Block unten
+# einkommentieren.
+
+name: Deploy parfums to GitHub Pages
+
+on:
+  workflow_dispatch:
+  # push:
+  #   branches: [claude/form-webapp-database-email-uWWcY]
+  #   paths: ['parfums/**', '.github/workflows/pages.yml']
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Seite unter /parfums bereitstellen
+        run: |
+          mkdir -p _site/parfums
+          cp -r parfums/. _site/parfums/
+          # Aufruf ohne Unterpfad leitet auf die Sammlung weiter
+          cat > _site/index.html <<'HTML'
+          <!DOCTYPE html>
+          <meta charset="utf-8">
+          <meta http-equiv="refresh" content="0; url=./parfums/">
+          <title>Weiterleitung</title>
+          <a href="./parfums/">Zur Duftsammlung</a>
+          HTML
+
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+      - id: deployment
+        uses: actions/deploy-pages@v4

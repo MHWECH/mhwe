@@ -1,0 +1,317 @@
+/* ── Grundlagen ─────────────────────────────────────────────── */
+:root {
+  --grund:        #0d0c0b;
+  --grund-hell:   #151312;
+  --karte:        #1b1917;
+  --linie:        #2e2a26;
+  --text:         #ece7e0;
+  --text-leise:   #9c948a;
+  --gold:         #c9a961;
+  --gold-hell:    #e2c583;
+  --radius:       4px;
+  --serif:        "Cormorant Garamond", Georgia, serif;
+  --sans:         "Inter", system-ui, -apple-system, sans-serif;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--grund);
+  color: var(--text);
+  font-family: var(--sans);
+  font-weight: 300;
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+}
+
+.huelle { width: min(1180px, 92vw); margin-inline: auto; }
+
+.visuell-versteckt {
+  position: absolute; width: 1px; height: 1px;
+  overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap;
+}
+
+/* ── Kopf ───────────────────────────────────────────────────── */
+.kopf {
+  padding: clamp(3rem, 9vw, 6.5rem) 0 clamp(2rem, 5vw, 3.5rem);
+  text-align: center;
+  border-bottom: 1px solid var(--linie);
+  background:
+    radial-gradient(ellipse at 50% 0%, rgba(201,169,97,.10), transparent 62%),
+    var(--grund);
+}
+
+.augenbraue {
+  margin: 0 0 1.1rem;
+  font-size: .68rem;
+  letter-spacing: .42em;
+  text-transform: uppercase;
+  color: var(--gold);
+}
+
+.kopf h1 {
+  margin: 0;
+  font-family: var(--serif);
+  font-weight: 300;
+  font-size: clamp(2.6rem, 8vw, 4.6rem);
+  letter-spacing: .04em;
+  line-height: 1.05;
+}
+
+.untertitel {
+  margin: 1rem auto 0;
+  max-width: 46ch;
+  color: var(--text-leise);
+  font-size: .95rem;
+}
+
+/* ── Werkzeugleiste ─────────────────────────────────────────── */
+.werkzeuge {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  background: rgba(13, 12, 11, .93);
+  backdrop-filter: blur(10px);
+  border-bottom: 1px solid var(--linie);
+}
+
+.werkzeuge-innen {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: .9rem 1.4rem;
+  padding: 1rem 0;
+}
+
+.suchfeld { flex: 1 1 15rem; }
+
+.suchfeld input {
+  width: 100%;
+  padding: .62rem .95rem;
+  background: var(--grund-hell);
+  border: 1px solid var(--linie);
+  border-radius: var(--radius);
+  color: var(--text);
+  font: inherit;
+  font-size: .9rem;
+}
+.suchfeld input::placeholder { color: #6d655c; }
+.suchfeld input:focus-visible { outline: 1px solid var(--gold); border-color: var(--gold); }
+
+.filter { display: flex; flex-wrap: wrap; gap: .4rem; }
+
+.chip {
+  padding: .38rem .85rem;
+  background: transparent;
+  border: 1px solid var(--linie);
+  border-radius: 999px;
+  color: var(--text-leise);
+  font: inherit;
+  font-size: .78rem;
+  letter-spacing: .04em;
+  cursor: pointer;
+  transition: color .18s, border-color .18s, background .18s;
+}
+.chip:hover { color: var(--text); border-color: #4a433b; }
+.chip[aria-pressed="true"] {
+  color: var(--grund);
+  background: var(--gold);
+  border-color: var(--gold);
+  font-weight: 500;
+}
+
+.zaehler {
+  margin: 0;
+  margin-left: auto;
+  color: var(--text-leise);
+  font-size: .78rem;
+  letter-spacing: .1em;
+  white-space: nowrap;
+}
+
+/* ── Raster ─────────────────────────────────────────────────── */
+.raster {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
+  gap: clamp(1rem, 2.4vw, 1.8rem);
+  padding: clamp(2rem, 5vw, 3.5rem) 0;
+}
+
+.karte {
+  display: flex;
+  flex-direction: column;
+  background: var(--karte);
+  border: 1px solid var(--linie);
+  border-radius: var(--radius);
+  overflow: hidden;
+  text-align: left;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+  padding: 0;
+  transition: transform .22s ease, border-color .22s ease;
+}
+.karte:hover, .karte:focus-visible {
+  transform: translateY(-3px);
+  border-color: var(--gold);
+  outline: none;
+}
+
+.karte-bild {
+  aspect-ratio: 3 / 4;
+  overflow: hidden;
+  background: #100f0e;
+}
+.karte-bild img {
+  width: 100%; height: 100%;
+  object-fit: cover;
+  display: block;
+  transition: transform .5s ease;
+}
+.karte:hover .karte-bild img { transform: scale(1.045); }
+
+.karte-text { padding: 1rem 1.1rem 1.25rem; }
+
+.karte-marke {
+  margin: 0 0 .3rem;
+  font-size: .68rem;
+  letter-spacing: .2em;
+  text-transform: uppercase;
+  color: var(--gold);
+}
+
+.karte-name {
+  margin: 0;
+  font-family: var(--serif);
+  font-size: 1.32rem;
+  font-weight: 400;
+  line-height: 1.2;
+}
+
+.karte-meta {
+  margin: .5rem 0 0;
+  font-size: .78rem;
+  color: var(--text-leise);
+}
+
+.leer, .fehler {
+  padding: 3rem 0 5rem;
+  text-align: center;
+  color: var(--text-leise);
+}
+.fehler code {
+  color: var(--gold);
+  font-size: .88em;
+}
+
+/* ── Detailansicht ──────────────────────────────────────────── */
+.overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: grid;
+  place-items: center;
+  padding: 1.2rem;
+  background: rgba(6, 6, 5, .88);
+  backdrop-filter: blur(4px);
+  overflow-y: auto;
+}
+.overlay[hidden] { display: none; }
+
+.overlay-box {
+  position: relative;
+  width: min(880px, 100%);
+  max-height: 92vh;
+  overflow-y: auto;
+  background: var(--karte);
+  border: 1px solid var(--linie);
+  border-radius: var(--radius);
+}
+
+.schliessen {
+  position: absolute;
+  top: .5rem; right: .7rem;
+  z-index: 2;
+  width: 2.2rem; height: 2.2rem;
+  background: rgba(13,12,11,.75);
+  border: 1px solid var(--linie);
+  border-radius: 50%;
+  color: var(--text);
+  font-size: 1.4rem;
+  line-height: 1;
+  cursor: pointer;
+}
+.schliessen:hover { color: var(--gold); border-color: var(--gold); }
+
+.detail { display: grid; grid-template-columns: 1fr; }
+@media (min-width: 720px) {
+  .detail { grid-template-columns: 42% 1fr; }
+}
+
+.detail-bilder { background: #100f0e; }
+.detail-bilder img {
+  width: 100%;
+  display: block;
+  aspect-ratio: 3 / 4;
+  object-fit: cover;
+}
+
+.detail-text { padding: clamp(1.4rem, 3.5vw, 2.4rem); }
+
+.detail-text h2 {
+  margin: .2rem 0 0;
+  font-family: var(--serif);
+  font-weight: 400;
+  font-size: clamp(1.8rem, 4vw, 2.4rem);
+  line-height: 1.15;
+}
+
+.detail-marke {
+  margin: 0;
+  font-size: .7rem;
+  letter-spacing: .24em;
+  text-transform: uppercase;
+  color: var(--gold);
+}
+
+.detail-fakten {
+  margin: 1.4rem 0 0;
+  border-top: 1px solid var(--linie);
+}
+.detail-fakten div {
+  display: flex;
+  gap: 1rem;
+  padding: .62rem 0;
+  border-bottom: 1px solid var(--linie);
+  font-size: .88rem;
+}
+.detail-fakten dt {
+  flex: 0 0 8.5rem;
+  margin: 0;
+  color: var(--text-leise);
+  font-size: .72rem;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+  padding-top: .16rem;
+}
+.detail-fakten dd { margin: 0; }
+
+.offen { color: #6d655c; font-style: italic; }
+
+.noten { margin: 0; padding-left: 1.1rem; }
+.noten li { margin-bottom: .18rem; }
+
+/* ── Fuss ───────────────────────────────────────────────────── */
+.fuss {
+  margin-top: clamp(2rem, 6vw, 4rem);
+  padding: 1.8rem 0 2.4rem;
+  border-top: 1px solid var(--linie);
+  text-align: center;
+}
+.fuss p {
+  margin: 0;
+  color: var(--text-leise);
+  font-size: .76rem;
+  letter-spacing: .1em;
+}
