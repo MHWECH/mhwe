@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Duftsammlung</title>
+<meta name="description" content="Private Uebersicht einer Parfum-Sammlung.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' fill='%230d0c0b'/%3E%3Cpath d='M13 5h6v3l3 3v14a2 2 0 0 1-2 2H12a2 2 0 0 1-2-2V11l3-3z' fill='%23c9a961'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@300;400;600&family=Inter:wght@300;400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<header class="kopf">
+  <div class="huelle">
+    <p class="augenbraue">Privatsammlung</p>
+    <h1 id="titel">Duftsammlung</h1>
+    <p class="untertitel" id="untertitel"></p>
+  </div>
+</header>
+
+<nav class="werkzeuge">
+  <div class="huelle werkzeuge-innen">
+    <label class="suchfeld">
+      <span class="visuell-versteckt">Suchen</span>
+      <input type="search" id="suche" placeholder="Marke oder Name suchen ..." autocomplete="off">
+    </label>
+    <div class="filter" id="markenfilter" role="group" aria-label="Nach Marke filtern"></div>
+    <p class="zaehler" id="zaehler"></p>
+  </div>
+</nav>
+
+<main class="huelle">
+  <div class="raster" id="raster"></div>
+  <p class="leer" id="leer" hidden>Kein Treffer.</p>
+  <p class="fehler" id="fehler" hidden>
+    Daten konnten nicht geladen werden. Die Seite muss ueber einen Webserver laufen,
+    nicht per Doppelklick. Im Ordner ausfuehren: <code>./start.sh</code>
+  </p>
+</main>
+
+<footer class="fuss">
+  <div class="huelle">
+    <p>Stand: <span id="stand"></span> &middot; Fotos: MHWE</p>
+  </div>
+</footer>
+
+<div class="overlay" id="overlay" hidden role="dialog" aria-modal="true" aria-labelledby="detail-titel">
+  <div class="overlay-box" id="overlay-box">
+    <button class="schliessen" id="schliessen" aria-label="Schliessen">&times;</button>
+    <div class="detail" id="detail"></div>
+  </div>
+</div>
+
+<script src="js/app.js"></script>
+</body>
+</html>
