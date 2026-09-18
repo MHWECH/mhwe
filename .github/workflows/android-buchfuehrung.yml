@@ -1,0 +1,44 @@
+name: Buchführung APK
+
+on:
+  push:
+    paths:
+      - 'android-buchfuehrung/**'
+      - '.github/workflows/android-buchfuehrung.yml'
+  pull_request:
+    paths:
+      - 'android-buchfuehrung/**'
+      - '.github/workflows/android-buchfuehrung.yml'
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: android-buchfuehrung
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: JDK 17 einrichten
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Android SDK einrichten
+        uses: android-actions/setup-android@v3
+
+      - name: Gradle einrichten
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Debug-APK bauen
+        run: ./gradlew assembleDebug --stacktrace
+
+      - name: APK hochladen
+        uses: actions/upload-artifact@v4
+        with:
+          name: buchfuehrung-debug-apk
+          path: android-buchfuehrung/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
