@@ -26,9 +26,14 @@ keine Rundungsfehler wie bei Fliesskommazahlen.
 ### Über GitHub Actions (kein Setup nötig)
 
 Der Workflow `.github/workflows/android-buchfuehrung.yml` baut die App bei jedem
-Push. Das fertige APK liegt danach unter **Actions → der Lauf → Artifacts →
-`buchfuehrung-debug-apk`**. Der Workflow lässt sich auch von Hand starten
-(„Run workflow").
+Push. Das fertige APK landet an zwei Orten:
+
+- **Release** (empfohlen) — direkter Download ohne GitHub-Login:
+  <https://github.com/MHWECH/mhwe/releases/tag/buchfuehrung-latest>
+- **Actions → der Lauf → Artifacts → `buchfuehrung-debug-apk`** — als ZIP, nur
+  eingeloggt herunterladbar
+
+Der Workflow lässt sich auch von Hand starten („Run workflow").
 
 ### Lokal
 

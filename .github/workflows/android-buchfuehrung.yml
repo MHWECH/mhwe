@@ -11,6 +11,9 @@ on:
       - '.github/workflows/android-buchfuehrung.yml'
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -40,9 +43,35 @@ jobs:
       - name: Debug-APK bauen
         run: ./gradlew assembleDebug --stacktrace
 
-      - name: APK hochladen
+      - name: APK umbenennen
+        run: cp app/build/outputs/apk/debug/app-debug.apk buchfuehrung.apk
+
+      - name: APK als Artifact hochladen
         uses: actions/upload-artifact@v4
         with:
           name: buchfuehrung-debug-apk
-          path: android-buchfuehrung/app/build/outputs/apk/debug/app-debug.apk
+          path: android-buchfuehrung/buchfuehrung.apk
           if-no-files-found: error
+
+      # Zusaetzlich als Release veroeffentlichen: ein Release-Asset laesst sich
+      # ohne GitHub-Login direkt herunterladen, ein Actions-Artifact nicht.
+      - name: APK als Release veroeffentlichen
+        if: github.event_name != 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG=buchfuehrung-latest
+          NOTIZ="Aktuelles Debug-APK der Buchfuehrungs-App, gebaut aus Commit ${GITHUB_SHA}.
+
+          Direkt herunterladen und auf dem Handy antippen. Android fragt beim
+          ersten Mal nach der Erlaubnis, Apps aus dieser Quelle zu installieren."
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release upload "$TAG" buchfuehrung.apk --clobber --repo "$GITHUB_REPOSITORY"
+            gh release edit "$TAG" --notes "$NOTIZ" --repo "$GITHUB_REPOSITORY"
+          else
+            gh release create "$TAG" buchfuehrung.apk \
+              --title "Buchfuehrung - aktuelles APK" \
+              --notes "$NOTIZ" \
+              --target "$GITHUB_SHA" \
+              --repo "$GITHUB_REPOSITORY"
+          fi
