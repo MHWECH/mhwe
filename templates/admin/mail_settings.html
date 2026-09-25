@@ -198,7 +198,7 @@
         <div class="table-responsive">
             <table class="table table-sm table-hover mb-0 align-middle">
                 <thead class="table-light">
-                    <tr><th>Zeit (UTC)</th><th>Art</th><th>Empfänger</th><th>Betreff</th><th>Status</th></tr>
+                    <tr><th>Zeit (UTC)</th><th>Art</th><th>Empfänger</th><th>Betreff</th><th>Status</th><th>Mail</th></tr>
                 </thead>
                 <tbody>
                 {% set kinds = {'notification': 'Benachrichtigung', 'confirmation': 'Bestätigung', 'test': 'Test'} %}
@@ -214,6 +214,11 @@
                             {% else %}
                             <span class="badge bg-danger">Fehler</span>
                             <div class="small text-danger">{{ log.error }}</div>
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if log.eml_path %}
+                            <a href="{{ url_for('admin_download_eml', log_id=log.id) }}" class="btn btn-sm btn-outline-secondary" title="Komplette Mail inkl. Anhänge (.eml)">⬇ .eml</a>
                             {% endif %}
                         </td>
                     </tr>

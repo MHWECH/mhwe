@@ -51,7 +51,11 @@
                     {% for field in config.fields %}
                     <td>
                         {% set val = sub.data.get(field.name, '') %}
-                        {% if val is iterable and val is not string %}
+                        {% if field.type == 'file' %}
+                        {% for fname in val or [] %}
+                        <a href="{{ url_for('admin_download_upload', sid=sub.id, filename=fname) }}" class="d-block small">📎 {{ fname }}</a>
+                        {% endfor %}
+                        {% elif val is iterable and val is not string %}
                         {{ val | join(', ') }}
                         {% else %}
                         <span title="{{ val }}">{{ val[:80] }}{{ '…' if val|length > 80 else '' }}</span>

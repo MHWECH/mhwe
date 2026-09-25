@@ -1,12 +1,16 @@
 from flask import (Flask, render_template, request, redirect, url_for,
-                   session, jsonify, Response, flash, abort)
+                   session, jsonify, Response, flash, abort, send_from_directory)
 from flask_sqlalchemy import SQLAlchemy
 from werkzeug.security import generate_password_hash, check_password_hash
+from werkzeug.utils import secure_filename
 from functools import wraps
 from datetime import datetime, timedelta
-import json, csv, io, smtplib, ssl, os, secrets
+import json, csv, io, smtplib, ssl, os, secrets, shutil, mimetypes
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
+from email.mime.base import MIMEBase
+from email import encoders
+from email.utils import formatdate
 from concurrent.futures import ThreadPoolExecutor
 from cryptography.fernet import Fernet, InvalidToken
 
@@ -15,6 +19,12 @@ from cryptography.fernet import Fernet, InvalidToken
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 INSTANCE_DIR = os.path.join(BASE_DIR, 'instance')
 os.makedirs(INSTANCE_DIR, exist_ok=True)
+UPLOAD_DIR = os.environ.get('UPLOAD_DIR', os.path.join(INSTANCE_DIR, 'uploads'))
+MAIL_ARCHIVE_DIR = os.environ.get('MAIL_ARCHIVE_DIR', os.path.join(INSTANCE_DIR, 'mail_archive'))
+ALLOWED_UPLOAD_EXTENSIONS = {
+    'pdf', 'jpg', 'jpeg', 'png', 'gif', 'webp', 'heic', 'txt', 'csv',
+    'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx', 'odt', 'ods', 'zip',
+}
 
 
 def _get_or_create_secret_key():
@@ -45,6 +55,7 @@ app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', _get_or_create_secret_ke
 app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get(
     'DATABASE_URL', f'sqlite:///{os.path.join(INSTANCE_DIR, "formapp.db")}')
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+app.config['MAX_CONTENT_LENGTH'] = int(os.environ.get('MAX_UPLOAD_MB', 20)) * 1024 * 1024
 
 db = SQLAlchemy(app)
 _fernet = Fernet(os.environ.get('MAIL_ENCRYPTION_KEY') or _get_or_create_mail_key())
@@ -156,6 +167,7 @@ class MailLog(db.Model):
     subject = db.Column(db.String(500), default='')
     success = db.Column(db.Boolean, default=True)
     error = db.Column(db.Text, default='')
+    eml_path = db.Column(db.String(500), default='')  # relative to MAIL_ARCHIVE_DIR
 
 
 # ─── Auth ────────────────────────────────────────────────────────────────────
@@ -193,6 +205,8 @@ def submit():
         if not name:
             continue
         ftype = field.get('type', 'text')
+        if ftype == 'file':
+            continue  # saved below, once the submission has an id
         if ftype == 'checkbox':
             data[name] = 'Ja' if name in request.form else 'Nein'
         elif ftype in ('checkbox_group',):
@@ -205,11 +219,24 @@ def submit():
     db.session.add(submission)
     db.session.commit()
 
+    file_fields = [f.get('name') for f in config.fields if f.get('type') == 'file' and f.get('name')]
+    if file_fields:
+        for name in file_fields:
+            data[name] = _save_uploads(submission.id, request.files.getlist(name))
+        submission.data = data
+        db.session.commit()
+
     mail_cfg = MailConfig.query.first()
     if mail_cfg and mail_cfg.enabled:
         _mail_executor.submit(_send_submission_mails, submission.id)
 
     return redirect(url_for('success'))
+
+
+@app.errorhandler(413)
+def upload_too_large(_exc):
+    mb = app.config['MAX_CONTENT_LENGTH'] // (1024 * 1024)
+    return f'Die hochgeladenen Dateien sind zu gross (maximal {mb} MB).', 413
 
 
 @app.route('/success')
@@ -305,6 +332,7 @@ def admin_delete_submission(sid):
     sub = Submission.query.get_or_404(sid)
     db.session.delete(sub)
     db.session.commit()
+    shutil.rmtree(_submission_upload_dir(sid), ignore_errors=True)
     flash('Einsendung gelöscht.', 'success')
     return redirect(url_for('admin_submissions'))
 
@@ -314,6 +342,7 @@ def admin_delete_submission(sid):
 def admin_delete_all_submissions():
     Submission.query.delete()
     db.session.commit()
+    shutil.rmtree(UPLOAD_DIR, ignore_errors=True)
     flash('Alle Einsendungen gelöscht.', 'success')
     return redirect(url_for('admin_submissions'))
 
@@ -426,6 +455,22 @@ def admin_mail_test():
     return redirect(url_for('admin_mail_settings'))
 
 
+@app.route('/admin/uploads/<int:sid>/<path:filename>')
+@login_required
+def admin_download_upload(sid, filename):
+    return send_from_directory(_submission_upload_dir(sid), filename, as_attachment=True)
+
+
+@app.route('/admin/mail-log/<int:log_id>/eml')
+@login_required
+def admin_download_eml(log_id):
+    log = MailLog.query.get_or_404(log_id)
+    if not log.eml_path:
+        abort(404)
+    return send_from_directory(MAIL_ARCHIVE_DIR, log.eml_path, as_attachment=True,
+                               mimetype='message/rfc822')
+
+
 @app.route('/admin/change-password', methods=['POST'])
 @login_required
 def admin_change_password():
@@ -462,37 +507,109 @@ def _get_smtp(cfg):
     return conn
 
 
-def _send_raw_email(cfg, recipients, subject, body_text, body_html=None, kind=''):
+def _send_raw_email(cfg, recipients, subject, body_text, body_html=None, kind='',
+                    attachments=None):
+    msg = _build_message(cfg, recipients, subject, body_text, body_html, attachments)
+    eml_path = _archive_message(msg, kind)
     try:
-        _deliver_email(cfg, recipients, subject, body_text, body_html)
+        with _get_smtp(cfg) as conn:
+            conn.sendmail(cfg.from_email, recipients, msg.as_string())
     except Exception as exc:
-        _log_mail(kind, recipients, subject, error=exc)
+        _log_mail(kind, recipients, subject, error=exc, eml_path=eml_path)
         raise
-    _log_mail(kind, recipients, subject)
+    _log_mail(kind, recipients, subject, eml_path=eml_path)
 
 
-def _log_mail(kind, recipients, subject, error=None):
+def _archive_message(msg, kind):
+    """Store the complete mail (incl. attachments) as .eml; returns the relative path."""
+    try:
+        now = datetime.utcnow()
+        rel = os.path.join(now.strftime('%Y'), now.strftime('%m'),
+                           f'{now.strftime("%Y%m%d-%H%M%S")}_{kind or "mail"}_{secrets.token_hex(4)}.eml')
+        full = os.path.join(MAIL_ARCHIVE_DIR, rel)
+        os.makedirs(os.path.dirname(full), exist_ok=True)
+        with open(full, 'wb') as f:
+            f.write(msg.as_bytes())
+        return rel
+    except Exception as exc:
+        app.logger.error('Mail archive write failed: %s', exc)
+        return ''
+
+
+def _log_mail(kind, recipients, subject, error=None, eml_path=''):
     try:
         db.session.add(MailLog(kind=kind, recipients=', '.join(recipients)[:500],
                                subject=subject[:500], success=error is None,
-                               error=str(error or '')))
+                               error=str(error or ''), eml_path=eml_path))
         db.session.commit()
     except Exception as exc:
         db.session.rollback()
         app.logger.error('Mail log write failed: %s', exc)
 
 
-def _deliver_email(cfg, recipients, subject, body_text, body_html=None):
-    msg = MIMEMultipart('alternative')
-    from_hdr = f"{cfg.from_name} <{cfg.from_email}>" if cfg.from_name else cfg.from_email
-    msg['From'] = from_hdr
+def _build_message(cfg, recipients, subject, body_text, body_html=None, attachments=None):
+    body = MIMEMultipart('alternative')
+    body.attach(MIMEText(body_text, 'plain', 'utf-8'))
+    if body_html:
+        body.attach(MIMEText(body_html, 'html', 'utf-8'))
+    if attachments:
+        msg = MIMEMultipart('mixed')
+        msg.attach(body)
+        for path in attachments:
+            ctype = mimetypes.guess_type(path)[0] or 'application/octet-stream'
+            maintype, subtype = ctype.split('/', 1)
+            part = MIMEBase(maintype, subtype)
+            with open(path, 'rb') as f:
+                part.set_payload(f.read())
+            encoders.encode_base64(part)
+            part.add_header('Content-Disposition', 'attachment',
+                            filename=os.path.basename(path))
+            msg.attach(part)
+    else:
+        msg = body
+    msg['From'] = f"{cfg.from_name} <{cfg.from_email}>" if cfg.from_name else cfg.from_email
     msg['To'] = ', '.join(recipients)
     msg['Subject'] = subject
-    msg.attach(MIMEText(body_text, 'plain', 'utf-8'))
-    if body_html:
-        msg.attach(MIMEText(body_html, 'html', 'utf-8'))
-    with _get_smtp(cfg) as conn:
-        conn.sendmail(cfg.from_email, recipients, msg.as_string())
+    msg['Date'] = formatdate(localtime=True)
+    return msg
+
+
+def _submission_upload_dir(submission_id):
+    return os.path.join(UPLOAD_DIR, str(submission_id))
+
+
+def _save_uploads(submission_id, files):
+    saved = []
+    for file in files:
+        if not file or not file.filename:
+            continue
+        name = secure_filename(file.filename)
+        ext = name.rsplit('.', 1)[-1].lower() if '.' in name else ''
+        if ext not in ALLOWED_UPLOAD_EXTENSIONS:
+            app.logger.warning('Upload rejected (type): %s', file.filename)
+            continue
+        target_dir = _submission_upload_dir(submission_id)
+        os.makedirs(target_dir, exist_ok=True)
+        base, n = name, 1
+        while os.path.exists(os.path.join(target_dir, name)):
+            stem, dot, e = base.rpartition('.')
+            name = f'{stem}_{n}{dot}{e}'
+            n += 1
+        file.save(os.path.join(target_dir, name))
+        saved.append(name)
+    return saved
+
+
+def _submission_attachments(form_config, submission):
+    paths = []
+    for field in form_config.fields:
+        if field.get('type') != 'file':
+            continue
+        for name in submission.data.get(field.get('name', ''), []) or []:
+            path = os.path.join(_submission_upload_dir(submission.id), name)
+            if os.path.isfile(path):
+                paths.append(path)
+    return paths
 
 
 def _format_submission_text(form_config, submission):
@@ -547,7 +664,8 @@ def _send_notification(mail_cfg, form_config, submission):
     body = (_render_template_str(mail_cfg.notification_body, submission.data)
             if mail_cfg.notification_body
             else _format_submission_text(form_config, submission))
-    _send_raw_email(mail_cfg, recipients, subject, body, kind='notification')
+    _send_raw_email(mail_cfg, recipients, subject, body, kind='notification',
+                    attachments=_submission_attachments(form_config, submission))
 
 
 def _send_confirmation(mail_cfg, form_config, submission, recipient):
@@ -581,6 +699,10 @@ def _get_or_create_form_config():
 
 def init_db():
     db.create_all()
+    cols = [c['name'] for c in db.inspect(db.engine).get_columns('mail_log')]
+    if 'eml_path' not in cols:
+        with db.engine.begin() as conn:
+            conn.execute(db.text("ALTER TABLE mail_log ADD COLUMN eml_path VARCHAR(500) DEFAULT ''"))
     if not AdminUser.query.first():
         admin_user = os.environ.get('ADMIN_USERNAME', 'admin')
         admin_pass = os.environ.get('ADMIN_PASSWORD', 'admin123')
