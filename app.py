@@ -7,6 +7,8 @@ from datetime import datetime, timedelta
 import json, csv, io, smtplib, ssl, os, secrets
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
+from concurrent.futures import ThreadPoolExecutor
+from cryptography.fernet import Fernet, InvalidToken
 
 # ─── App Setup ───────────────────────────────────────────────────────────────
 
@@ -26,6 +28,18 @@ def _get_or_create_secret_key():
     return key
 
 
+def _get_or_create_mail_key():
+    key_file = os.path.join(INSTANCE_DIR, '.mail_key')
+    if os.path.exists(key_file):
+        with open(key_file) as f:
+            return f.read().strip()
+    key = Fernet.generate_key().decode()
+    with open(key_file, 'w') as f:
+        f.write(key)
+    os.chmod(key_file, 0o600)
+    return key
+
+
 app = Flask(__name__)
 app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', _get_or_create_secret_key())
 app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get(
@@ -33,6 +47,27 @@ app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get(
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
 db = SQLAlchemy(app)
+_fernet = Fernet(os.environ.get('MAIL_ENCRYPTION_KEY') or _get_or_create_mail_key())
+# Mails are sent in the background so a slow SMTP server doesn't block the form
+_mail_executor = ThreadPoolExecutor(max_workers=2)
+
+ENC_PREFIX = 'enc:'
+
+
+def _encrypt_secret(value):
+    if not value:
+        return ''
+    return ENC_PREFIX + _fernet.encrypt(value.encode()).decode()
+
+
+def _decrypt_secret(value):
+    if not value or not value.startswith(ENC_PREFIX):
+        return value or ''  # legacy plaintext
+    try:
+        return _fernet.decrypt(value[len(ENC_PREFIX):].encode()).decode()
+    except InvalidToken:
+        raise RuntimeError('SMTP-Passwort kann nicht entschlüsselt werden '
+                           '(Schlüssel geändert?). Bitte Passwort neu eingeben.')
 
 # ─── Models ──────────────────────────────────────────────────────────────────
 
@@ -74,7 +109,7 @@ class MailConfig(db.Model):
     smtp_host = db.Column(db.String(200), default='')
     smtp_port = db.Column(db.Integer, default=587)
     smtp_user = db.Column(db.String(200), default='')
-    smtp_password = db.Column(db.String(200), default='')
+    smtp_password = db.Column(db.String(500), default='')  # encrypted, see password
     use_tls = db.Column(db.Boolean, default=True)
     use_ssl = db.Column(db.Boolean, default=False)
     from_email = db.Column(db.String(200), default='')
@@ -86,6 +121,14 @@ class MailConfig(db.Model):
     notification_body = db.Column(db.Text, default='')
     confirmation_subject = db.Column(db.String(500), default='Bestätigung Ihrer Einsendung')
     confirmation_body = db.Column(db.Text, default='')
+
+    @property
+    def password(self):
+        return _decrypt_secret(self.smtp_password)
+
+    @password.setter
+    def password(self, value):
+        self.smtp_password = _encrypt_secret(value)
 
 
 class Submission(db.Model):
@@ -164,17 +207,7 @@ def submit():
 
     mail_cfg = MailConfig.query.first()
     if mail_cfg and mail_cfg.enabled:
-        try:
-            _send_notification(mail_cfg, config, submission)
-        except Exception as exc:
-            app.logger.error('Notification mail failed: %s', exc)
-        if mail_cfg.send_confirmation and mail_cfg.confirmation_email_field:
-            recipient = data.get(mail_cfg.confirmation_email_field, '')
-            if recipient and '@' in recipient:
-                try:
-                    _send_confirmation(mail_cfg, config, submission, recipient)
-                except Exception as exc:
-                    app.logger.error('Confirmation mail failed: %s', exc)
+        _mail_executor.submit(_send_submission_mails, submission.id)
 
     return redirect(url_for('success'))
 
@@ -353,7 +386,7 @@ def admin_mail_settings():
         cfg.smtp_user = request.form.get('smtp_user', '').strip()
         new_pw = request.form.get('smtp_password', '')
         if new_pw:
-            cfg.smtp_password = new_pw
+            cfg.password = new_pw
         cfg.use_tls = 'use_tls' in request.form
         cfg.use_ssl = 'use_ssl' in request.form
         cfg.from_email = request.form.get('from_email', '').strip()
@@ -425,7 +458,7 @@ def _get_smtp(cfg):
         if cfg.use_tls:
             conn.starttls(context=context)
     if cfg.smtp_user:
-        conn.login(cfg.smtp_user, cfg.smtp_password)
+        conn.login(cfg.smtp_user, cfg.password)
     return conn
 
 
@@ -483,6 +516,29 @@ def _render_template_str(template, data):
     return result
 
 
+def _send_submission_mails(submission_id):
+    with app.app_context():
+        try:
+            mail_cfg = MailConfig.query.first()
+            config = FormConfig.query.first()
+            submission = db.session.get(Submission, submission_id)
+            if not (mail_cfg and mail_cfg.enabled and config and submission):
+                return
+            try:
+                _send_notification(mail_cfg, config, submission)
+            except Exception as exc:
+                app.logger.error('Notification mail failed: %s', exc)
+            if mail_cfg.send_confirmation and mail_cfg.confirmation_email_field:
+                recipient = submission.data.get(mail_cfg.confirmation_email_field, '')
+                if isinstance(recipient, str) and '@' in recipient:
+                    try:
+                        _send_confirmation(mail_cfg, config, submission, recipient)
+                    except Exception as exc:
+                        app.logger.error('Confirmation mail failed: %s', exc)
+        except Exception:
+            app.logger.exception('Background mail job failed')
+
+
 def _send_notification(mail_cfg, form_config, submission):
     recipients = [e.strip() for e in mail_cfg.notification_email.split(',') if e.strip()]
     if not recipients:
@@ -534,8 +590,11 @@ def init_db():
         print(f'[INIT] Admin-Benutzer erstellt: {admin_user} / {admin_pass}')
         print('[INIT] Bitte Passwort nach dem ersten Login ändern!')
     _get_or_create_form_config()
-    if not MailConfig.query.first():
+    mail_cfg = MailConfig.query.first()
+    if not mail_cfg:
         db.session.add(MailConfig())
+    elif mail_cfg.smtp_password and not mail_cfg.smtp_password.startswith(ENC_PREFIX):
+        mail_cfg.password = mail_cfg.smtp_password  # encrypt legacy plaintext
     db.session.commit()
 
 
