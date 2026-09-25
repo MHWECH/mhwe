@@ -3,8 +3,8 @@ from flask import (Flask, render_template, request, redirect, url_for,
 from flask_sqlalchemy import SQLAlchemy
 from werkzeug.security import generate_password_hash, check_password_hash
 from functools import wraps
-from datetime import datetime
-import json, csv, io, smtplib, os, secrets
+from datetime import datetime, timedelta
+import json, csv, io, smtplib, ssl, os, secrets
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 
@@ -102,6 +102,17 @@ class Submission(db.Model):
     @data.setter
     def data(self, value):
         self.data_json = json.dumps(value, ensure_ascii=False)
+
+
+class MailLog(db.Model):
+    __tablename__ = 'mail_log'
+    id = db.Column(db.Integer, primary_key=True)
+    sent_at = db.Column(db.DateTime, default=datetime.utcnow, index=True)
+    kind = db.Column(db.String(20), default='')  # notification | confirmation | test
+    recipients = db.Column(db.String(500), default='')
+    subject = db.Column(db.String(500), default='')
+    success = db.Column(db.Boolean, default=True)
+    error = db.Column(db.Text, default='')
 
 
 # ─── Auth ────────────────────────────────────────────────────────────────────
@@ -213,7 +224,11 @@ def admin_dashboard():
     total = Submission.query.count()
     recent = Submission.query.order_by(Submission.submitted_at.desc()).limit(5).all()
     config = FormConfig.query.first()
-    return render_template('admin/dashboard.html', total=total, recent=recent, config=config)
+    mail_failures = MailLog.query.filter(
+        MailLog.success.is_(False),
+        MailLog.sent_at >= datetime.utcnow() - timedelta(days=7)).count()
+    return render_template('admin/dashboard.html', total=total, recent=recent, config=config,
+                           mail_failures=mail_failures)
 
 
 @app.route('/admin/form-builder', methods=['GET', 'POST'])
@@ -355,7 +370,9 @@ def admin_mail_settings():
         return redirect(url_for('admin_mail_settings'))
 
     form_config = FormConfig.query.first()
-    return render_template('admin/mail_settings.html', cfg=cfg, form_config=form_config)
+    mail_logs = MailLog.query.order_by(MailLog.sent_at.desc()).limit(20).all()
+    return render_template('admin/mail_settings.html', cfg=cfg, form_config=form_config,
+                           mail_logs=mail_logs)
 
 
 @app.route('/admin/mail-test', methods=['POST'])
@@ -368,7 +385,8 @@ def admin_mail_test():
         return redirect(url_for('admin_mail_settings'))
     try:
         _send_raw_email(cfg, [test_email], 'Test-E-Mail',
-                        'Dies ist eine Test-E-Mail von Ihrem Formular-System.\n\nWenn Sie diese E-Mail erhalten, funktioniert der Mail-Versand korrekt.')
+                        'Dies ist eine Test-E-Mail von Ihrem Formular-System.\n\nWenn Sie diese E-Mail erhalten, funktioniert der Mail-Versand korrekt.',
+                        kind='test')
         flash(f'Test-E-Mail erfolgreich an {test_email} gesendet!', 'success')
     except Exception as exc:
         flash(f'Fehler beim Senden: {exc}', 'error')
@@ -398,18 +416,40 @@ def admin_change_password():
 # ─── Email Helpers ───────────────────────────────────────────────────────────
 
 def _get_smtp(cfg):
+    # Verified context: checks the server certificate and hostname
+    context = ssl.create_default_context()
     if cfg.use_ssl:
-        conn = smtplib.SMTP_SSL(cfg.smtp_host, cfg.smtp_port, timeout=15)
+        conn = smtplib.SMTP_SSL(cfg.smtp_host, cfg.smtp_port, timeout=15, context=context)
     else:
         conn = smtplib.SMTP(cfg.smtp_host, cfg.smtp_port, timeout=15)
         if cfg.use_tls:
-            conn.starttls()
+            conn.starttls(context=context)
     if cfg.smtp_user:
         conn.login(cfg.smtp_user, cfg.smtp_password)
     return conn
 
 
-def _send_raw_email(cfg, recipients, subject, body_text, body_html=None):
+def _send_raw_email(cfg, recipients, subject, body_text, body_html=None, kind=''):
+    try:
+        _deliver_email(cfg, recipients, subject, body_text, body_html)
+    except Exception as exc:
+        _log_mail(kind, recipients, subject, error=exc)
+        raise
+    _log_mail(kind, recipients, subject)
+
+
+def _log_mail(kind, recipients, subject, error=None):
+    try:
+        db.session.add(MailLog(kind=kind, recipients=', '.join(recipients)[:500],
+                               subject=subject[:500], success=error is None,
+                               error=str(error or '')))
+        db.session.commit()
+    except Exception as exc:
+        db.session.rollback()
+        app.logger.error('Mail log write failed: %s', exc)
+
+
+def _deliver_email(cfg, recipients, subject, body_text, body_html=None):
     msg = MIMEMultipart('alternative')
     from_hdr = f"{cfg.from_name} <{cfg.from_email}>" if cfg.from_name else cfg.from_email
     msg['From'] = from_hdr
@@ -451,7 +491,7 @@ def _send_notification(mail_cfg, form_config, submission):
     body = (_render_template_str(mail_cfg.notification_body, submission.data)
             if mail_cfg.notification_body
             else _format_submission_text(form_config, submission))
-    _send_raw_email(mail_cfg, recipients, subject, body)
+    _send_raw_email(mail_cfg, recipients, subject, body, kind='notification')
 
 
 def _send_confirmation(mail_cfg, form_config, submission, recipient):
@@ -459,7 +499,7 @@ def _send_confirmation(mail_cfg, form_config, submission, recipient):
     body = (_render_template_str(mail_cfg.confirmation_body, submission.data)
             if mail_cfg.confirmation_body
             else f'Vielen Dank für Ihre Einsendung!\n\n{_format_submission_text(form_config, submission)}')
-    _send_raw_email(mail_cfg, [recipient], subject, body)
+    _send_raw_email(mail_cfg, [recipient], subject, body, kind='confirmation')
 
 
 # ─── Init Helpers ────────────────────────────────────────────────────────────
