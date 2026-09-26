@@ -30,9 +30,12 @@ echo "  Adresse: http://$HOST:$PORT"
 echo "  Admin:   http://$HOST:$PORT/admin"
 echo "=========================================="
 
-exec python -m gunicorn wsgi:application \
-    --bind "$HOST:$PORT" \
-    --workers 2 \
-    --timeout 60 \
-    2>/dev/null || \
-exec python app.py
+if python -c "import gunicorn" 2>/dev/null; then
+    exec python -m gunicorn wsgi:application \
+        --bind "$HOST:$PORT" \
+        --workers 2 \
+        --timeout 60
+else
+    echo "  Hinweis: gunicorn nicht installiert, starte Flask-Entwicklungsserver."
+    exec python app.py
+fi
