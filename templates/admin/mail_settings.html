@@ -189,4 +189,49 @@
         <div class="form-text mt-1">Sendet eine Test-E-Mail mit den aktuell gespeicherten Einstellungen.</div>
     </div>
 </div>
+
+<!-- Mail log -->
+<div class="card mt-4">
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <h5 class="mb-0">Versandprotokoll <small class="text-muted">(letzte 20)</small></h5>
+        <a href="{{ url_for('admin_mail_archive') }}" class="btn btn-sm btn-outline-primary">📦 Ganzes Archiv</a>
+    </div>
+    <div class="card-body p-0">
+        {% if mail_logs %}
+        <div class="table-responsive">
+            <table class="table table-sm table-hover mb-0 align-middle">
+                <thead class="table-light">
+                    <tr><th>Zeit (UTC)</th><th>Art</th><th>Empfänger</th><th>Betreff</th><th>Status</th><th>Mail</th></tr>
+                </thead>
+                <tbody>
+                {% set kinds = {'notification': 'Benachrichtigung', 'confirmation': 'Bestätigung', 'test': 'Test'} %}
+                {% for log in mail_logs %}
+                    <tr>
+                        <td class="text-nowrap">{{ log.sent_at.strftime('%d.%m.%Y %H:%M') }}</td>
+                        <td>{{ kinds.get(log.kind, log.kind or '—') }}</td>
+                        <td>{{ log.recipients }}</td>
+                        <td>{{ log.subject }}</td>
+                        <td>
+                            {% if log.success %}
+                            <span class="badge bg-success">Gesendet</span>
+                            {% else %}
+                            <span class="badge bg-danger">Fehler</span>
+                            <div class="small text-danger">{{ log.error }}</div>
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if log.eml_path %}
+                            <a href="{{ url_for('admin_download_eml', log_id=log.id) }}" class="btn btn-sm btn-outline-secondary" title="Komplette Mail inkl. Anhänge (.eml)">⬇ .eml</a>
+                            {% endif %}
+                        </td>
+                    </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <p class="text-muted p-3 mb-0">Noch keine E-Mails versendet.</p>
+        {% endif %}
+    </div>
+</div>
 {% endblock %}
