@@ -1,0 +1,90 @@
+{% extends 'admin/base.html' %}
+{% block title %}Mail-Archiv{% endblock %}
+
+{% block content %}
+<h2 class="mb-4">Mail-Archiv ({{ logs.total }})</h2>
+
+<form method="get" class="row g-2 mb-3">
+    <div class="col-md-6">
+        <input type="text" name="search" class="form-control" placeholder="Empfänger oder Betreff suchen…"
+               value="{{ search }}">
+    </div>
+    <div class="col-6 col-md-2">
+        <select name="kind" class="form-select">
+            <option value="">Alle Arten</option>
+            <option value="notification" {% if kind == 'notification' %}selected{% endif %}>Benachrichtigung</option>
+            <option value="confirmation" {% if kind == 'confirmation' %}selected{% endif %}>Bestätigung</option>
+            <option value="test" {% if kind == 'test' %}selected{% endif %}>Test</option>
+        </select>
+    </div>
+    <div class="col-6 col-md-2">
+        <select name="status" class="form-select">
+            <option value="">Alle Status</option>
+            <option value="ok" {% if status == 'ok' %}selected{% endif %}>Gesendet</option>
+            <option value="error" {% if status == 'error' %}selected{% endif %}>Fehler</option>
+        </select>
+    </div>
+    <div class="col-md-2 d-flex gap-2">
+        <button type="submit" class="btn btn-outline-secondary flex-fill">Suchen</button>
+        {% if search or kind or status %}
+        <a href="{{ url_for('admin_mail_archive') }}" class="btn btn-outline-danger">✕</a>
+        {% endif %}
+    </div>
+</form>
+
+{% if logs.items %}
+<div class="card">
+    <div class="table-responsive">
+        <table class="table table-sm table-hover mb-0 align-middle">
+            <thead class="table-light">
+                <tr><th>Zeit (UTC)</th><th>Art</th><th>Empfänger</th><th>Betreff</th><th>Status</th><th>Mail</th></tr>
+            </thead>
+            <tbody>
+            {% set kinds = {'notification': 'Benachrichtigung', 'confirmation': 'Bestätigung', 'test': 'Test'} %}
+            {% for log in logs.items %}
+                <tr>
+                    <td class="text-nowrap">{{ log.sent_at.strftime('%d.%m.%Y %H:%M') }}</td>
+                    <td>{{ kinds.get(log.kind, log.kind or '—') }}</td>
+                    <td>{{ log.recipients }}</td>
+                    <td>{{ log.subject }}</td>
+                    <td>
+                        {% if log.success %}
+                        <span class="badge bg-success">Gesendet</span>
+                        {% else %}
+                        <span class="badge bg-danger">Fehler</span>
+                        <div class="small text-danger">{{ log.error }}</div>
+                        {% endif %}
+                    </td>
+                    <td>
+                        {% if log.eml_path %}
+                        <a href="{{ url_for('admin_download_eml', log_id=log.id) }}" class="btn btn-sm btn-outline-secondary"
+                           title="Komplette Mail inkl. Anhänge (.eml)">⬇ .eml</a>
+                        {% endif %}
+                    </td>
+                </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+{% if logs.pages > 1 %}
+<nav class="mt-3">
+    <ul class="pagination pagination-sm justify-content-center">
+        {% for p in logs.iter_pages() %}
+        {% if p %}
+        <li class="page-item {% if p == logs.page %}active{% endif %}">
+            <a class="page-link" href="{{ url_for('admin_mail_archive', page=p, search=search, kind=kind, status=status) }}">{{ p }}</a>
+        </li>
+        {% else %}
+        <li class="page-item disabled"><span class="page-link">…</span></li>
+        {% endif %}
+        {% endfor %}
+    </ul>
+</nav>
+{% endif %}
+{% else %}
+<div class="alert alert-info">Keine Mails gefunden.</div>
+{% endif %}
+<p class="text-muted small mt-3">Die .eml-Datei öffnet sich per Doppelklick in Outlook, Apple Mail oder Thunderbird, mit allen Anhängen.</p>
+{% endblock %}

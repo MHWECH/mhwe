@@ -461,6 +461,26 @@ def admin_download_upload(sid, filename):
     return send_from_directory(_submission_upload_dir(sid), filename, as_attachment=True)
 
 
+@app.route('/admin/mail-archive')
+@login_required
+def admin_mail_archive():
+    page = request.args.get('page', 1, type=int)
+    search = request.args.get('search', '').strip()
+    kind = request.args.get('kind', '')
+    status = request.args.get('status', '')
+    query = MailLog.query.order_by(MailLog.sent_at.desc())
+    if search:
+        like = f'%{search}%'
+        query = query.filter(db.or_(MailLog.recipients.ilike(like), MailLog.subject.ilike(like)))
+    if kind:
+        query = query.filter(MailLog.kind == kind)
+    if status in ('ok', 'error'):
+        query = query.filter(MailLog.success.is_(status == 'ok'))
+    logs = query.paginate(page=page, per_page=50, error_out=False)
+    return render_template('admin/mail_archive.html', logs=logs, search=search,
+                           kind=kind, status=status)
+
+
 @app.route('/admin/mail-log/<int:log_id>/eml')
 @login_required
 def admin_download_eml(log_id):
