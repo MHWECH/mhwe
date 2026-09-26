@@ -17,7 +17,9 @@ from cryptography.fernet import Fernet, InvalidToken
 # ─── App Setup ───────────────────────────────────────────────────────────────
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-INSTANCE_DIR = os.path.join(BASE_DIR, 'instance')
+# All runtime data (DB, keys, uploads, mail archive) lives here; point it at a
+# persistent disk in production.
+INSTANCE_DIR = os.environ.get('INSTANCE_DIR', os.path.join(BASE_DIR, 'instance'))
 os.makedirs(INSTANCE_DIR, exist_ok=True)
 UPLOAD_DIR = os.environ.get('UPLOAD_DIR', os.path.join(INSTANCE_DIR, 'uploads'))
 MAIL_ARCHIVE_DIR = os.environ.get('MAIL_ARCHIVE_DIR', os.path.join(INSTANCE_DIR, 'mail_archive'))
